@@ -1,4 +1,4 @@
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -16,26 +16,15 @@
  * limitations under the License.
  */
 
-#include "config.h"
+package org.apache.hadoop.io.crypto.splittable;
 
-#include <jni.h>
+public class CryptoSplittableConstants {
+  public static final byte[] SYNC_MARK = { 0x31, 0x41, 0x59, 0x26, 0x53, 0x58, (byte) 0x97,
+    (byte) 0x93, 0x23, (byte) 0x84, 0x62, 0x64, 0x33, (byte) 0x83, 0x27, (byte) 0x95 };
+  public static final int SYNC_MARK_LENGTH = SYNC_MARK.length;
 
-JNIEXPORT jboolean JNICALL Java_org_apache_hadoop_util_NativeCodeLoader_buildSupportsSnappy
-  (JNIEnv *env, jclass clazz)
-{
-#ifdef HADOOP_SNAPPY_LIBRARY
-  return JNI_TRUE;
-#else
-  return JNI_FALSE;
-#endif
-}
-
-JNIEXPORT jboolean JNICALL Java_org_apache_hadoop_util_NativeCodeLoader_buildSupportsCrypto
-  (JNIEnv *env, jclass clazz)
-{
-#ifdef HADOOP_CRYPTO_LIBRARY
-  return JNI_TRUE;
-#else
-  return JNI_FALSE;
-#endif
+  public static final int version = 1;
+  public static final int VERSION_LENGTH = 4; // size of int
+  
+  public static final int MAX_HEADER_FIELD_SIZE = 4096; //4K
 }

@@ -1,4 +1,4 @@
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -16,26 +16,18 @@
  * limitations under the License.
  */
 
-#include "config.h"
+package org.apache.hadoop.io.crypto.splittable;
 
-#include <jni.h>
+class XOR {
+  private byte xor;
 
-JNIEXPORT jboolean JNICALL Java_org_apache_hadoop_util_NativeCodeLoader_buildSupportsSnappy
-  (JNIEnv *env, jclass clazz)
-{
-#ifdef HADOOP_SNAPPY_LIBRARY
-  return JNI_TRUE;
-#else
-  return JNI_FALSE;
-#endif
-}
+  public XOR(byte b) {
+    this.xor = b;
+  }
 
-JNIEXPORT jboolean JNICALL Java_org_apache_hadoop_util_NativeCodeLoader_buildSupportsCrypto
-  (JNIEnv *env, jclass clazz)
-{
-#ifdef HADOOP_CRYPTO_LIBRARY
-  return JNI_TRUE;
-#else
-  return JNI_FALSE;
-#endif
+  public void xor(byte[] b, int off, int len) {
+    for (int i = 0; i < len; i++) {
+      b[off + i] = (byte) (b[off + i] ^ xor);
+    }
+  }
 }

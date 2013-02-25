@@ -78,6 +78,11 @@ public class NativeCodeLoader {
    * Returns true only if this build was compiled with support for snappy.
    */
   public static native boolean buildSupportsSnappy();
+  
+  /**
+   * Returns true only if this build was compiled with support for crypto.
+   */
+  public static native boolean buildSupportsCrypto();
 
   /**
    * Return if native hadoop libraries, if present, can be used for this job.
