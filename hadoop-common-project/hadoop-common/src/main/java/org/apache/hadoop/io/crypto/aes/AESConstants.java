@@ -1,4 +1,4 @@
-/*
+/**
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -16,26 +16,12 @@
  * limitations under the License.
  */
 
-#include "config.h"
+package org.apache.hadoop.io.crypto.aes;
 
-#include <jni.h>
+public class AESConstants {
+  public static final int IV_LENGTH = 16;
 
-JNIEXPORT jboolean JNICALL Java_org_apache_hadoop_util_NativeCodeLoader_buildSupportsSnappy
-  (JNIEnv *env, jclass clazz)
-{
-#ifdef HADOOP_SNAPPY_LIBRARY
-  return JNI_TRUE;
-#else
-  return JNI_FALSE;
-#endif
-}
-
-JNIEXPORT jboolean JNICALL Java_org_apache_hadoop_util_NativeCodeLoader_buildSupportsCrypto
-  (JNIEnv *env, jclass clazz)
-{
-#ifdef HADOOP_CRYPTO_LIBRARY
-  return JNI_TRUE;
-#else
-  return JNI_FALSE;
-#endif
+  public static final int AES_BLOCK_SIZE = 32;
+  
+  public static final int AES_STREAM_HEADER_LENGTH = 5;
 }

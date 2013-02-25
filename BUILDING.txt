@@ -79,6 +79,30 @@ Maven build goals:
     the final tar file. This option requires that -Dsnappy.lib is also given,
     and it ignores the -Dsnappy.prefix option.
 
+ AES crypto build options:
+
+   OpenSSL is a crypto library that can be utilized by the native code.
+   It is currently an optional component, meaning that Hadoop can be built with
+   or without this dependency.
+
+  * Use -Drequire.crypto to fail the build if libcrypto.so is not found.
+    If this option is not specified and the crypto library is missing,
+    we silently build a version of libhadoop.so that cannot make use of crypto.
+    This option is recommended if you plan on making use of crypto and want
+    to get more repeatable builds.
+
+  * Use -Dcrypto.prefix to specify a nonstandard location for the libcrypto
+    header files and library files. You do not need this option if you have
+    installed crypto using a package manager.
+  * Use -Dcrypto.lib to specify a nonstandard location for the libcrypto library
+    files.  Similarly to crypto.prefix, you do not need this option if you have
+    installed crypto using a package manager.
+  * Use -Dbundle.crypto to copy the contents of the crypto.lib directory into
+    the final tar file. This option requires that -Dcrypto.lib is also given,
+    and it ignores the -Dcrypto.prefix option.
+  * OpenSSL 1.0.1c of crypto lib is recommanded, it uses Intel AES-NI 
+    automatically if the hardware supports AES-NI.
+
    Tests options:
 
   * Use -DskipTests to skip tests when running the following Maven goals:
