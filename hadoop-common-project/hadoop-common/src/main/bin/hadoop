@@ -33,6 +33,7 @@ function print_usage(){
   echo "  jar <jar>            run a jar file"
   echo "  checknative [-a|-h]  check native hadoop and compression libraries availability"
   echo "  distcp <srcurl> <desturl> copy file or directories recursively"
+  echo "  distcrypto           encrypt, decrypt or rotate file or directories recursively"
   echo "  archive -archiveName NAME -p <parent path> <src>* <dest> create a hadoop archive"
   echo "  classpath            prints the class path needed to get the"
   echo "                       Hadoop jar and the required libraries"
@@ -111,6 +112,9 @@ case $COMMAND in
       CLASS=org.apache.hadoop.util.NativeLibraryChecker
     elif [ "$COMMAND" = "distcp" ] ; then
       CLASS=org.apache.hadoop.tools.DistCp
+      CLASSPATH=${CLASSPATH}:${TOOL_PATH}
+    elif [ "$COMMAND" = "distcrypto" ] ; then
+      CLASS=org.apache.hadoop.tools.DistCrypto
       CLASSPATH=${CLASSPATH}:${TOOL_PATH}
     elif [ "$COMMAND" = "daemonlog" ] ; then
       CLASS=org.apache.hadoop.log.LogLevel

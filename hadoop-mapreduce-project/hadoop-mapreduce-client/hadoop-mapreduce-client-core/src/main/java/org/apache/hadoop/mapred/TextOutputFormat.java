@@ -32,6 +32,8 @@ import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.GzipCodec;
+import org.apache.hadoop.io.crypto.CryptoCodec;
+import org.apache.hadoop.mapreduce.cryptocontext.CryptoContextHelper;
 import org.apache.hadoop.util.*;
 
 /** 
@@ -131,6 +133,11 @@ public class TextOutputFormat<K, V> extends FileOutputFormat<K, V> {
       Path file = 
         FileOutputFormat.getTaskOutputPath(job, 
                                            name + codec.getDefaultExtension());
+
+      if(codec instanceof CryptoCodec) {
+        CryptoContextHelper.resetOutputCryptoContext((CryptoCodec) codec, job, file);
+      }
+
       FileSystem fs = file.getFileSystem(job);
       FSDataOutputStream fileOut = fs.create(file, progress);
       return new LineRecordWriter<K, V>(new DataOutputStream

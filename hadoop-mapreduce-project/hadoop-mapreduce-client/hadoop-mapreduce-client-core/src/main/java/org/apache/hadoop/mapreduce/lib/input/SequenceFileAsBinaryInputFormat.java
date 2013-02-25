@@ -27,9 +27,12 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.DataOutputBuffer;
 import org.apache.hadoop.io.SequenceFile;
+import org.apache.hadoop.io.crypto.CryptoContext;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.RecordReader;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
+import org.apache.hadoop.mapreduce.cryptocontext.CryptoContextHelper;
 
 /**
  * InputFormat reading keys, values from SequenceFiles in binary (raw)
@@ -69,7 +72,14 @@ public class SequenceFileAsBinaryInputFormat
       Path path = ((FileSplit)split).getPath();
       Configuration conf = context.getConfiguration();
       FileSystem fs = path.getFileSystem(conf);
-      this.in = new SequenceFile.Reader(fs, path, conf);
+
+      //reset the key of the decryptor case
+      CryptoContext cryptoContext = null;
+      if(conf instanceof JobConf) {
+        cryptoContext = CryptoContextHelper.getInputCryptoContext((JobConf)conf, path);
+      }
+
+      this.in = new SequenceFile.Reader(fs, path, conf, cryptoContext);
       this.end = ((FileSplit)split).getStart() + split.getLength();
       if (((FileSplit)split).getStart() > in.getPosition()) {
         in.sync(((FileSplit)split).getStart());    // sync to start

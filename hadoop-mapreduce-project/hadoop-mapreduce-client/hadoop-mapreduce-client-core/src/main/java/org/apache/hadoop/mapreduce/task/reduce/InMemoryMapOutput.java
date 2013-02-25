@@ -34,11 +34,14 @@ import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.compress.CodecPool;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.Decompressor;
+import org.apache.hadoop.io.crypto.CryptoCodec;
 
 import org.apache.hadoop.mapred.IFileInputStream;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Reporter;
 
 import org.apache.hadoop.mapreduce.TaskAttemptID;
+import org.apache.hadoop.mapreduce.cryptocontext.CryptoContextHelper;
 
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
@@ -63,6 +66,9 @@ class InMemoryMapOutput<K, V> extends MapOutput<K, V> {
     byteStream = new BoundedByteArrayOutputStream(size);
     memory = byteStream.getBuffer();
     if (codec != null) {
+      if(codec instanceof CryptoCodec) {
+        CryptoContextHelper.resetReduceInputCryptoContext((CryptoCodec)codec, new JobConf(conf), null);
+      }
       decompressor = CodecPool.getDecompressor(codec);
     } else {
       decompressor = null;

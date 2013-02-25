@@ -27,6 +27,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.*;
+import org.apache.hadoop.io.crypto.CryptoContext;
+import org.apache.hadoop.mapreduce.cryptocontext.CryptoContextHelper;
 import org.apache.hadoop.util.ReflectionUtils;
 
 /** 
@@ -46,7 +48,14 @@ public class SequenceFileRecordReader<K, V> implements RecordReader<K, V> {
     throws IOException {
     Path path = split.getPath();
     FileSystem fs = path.getFileSystem(conf);
-    this.in = new SequenceFile.Reader(fs, path, conf);
+
+    //reset the key of the decryptor case
+    CryptoContext cryptoContext = null;
+    if(conf instanceof JobConf){
+      cryptoContext = CryptoContextHelper.getInputCryptoContext((JobConf)conf, path);
+    }
+
+    this.in = new SequenceFile.Reader(fs, path, conf, cryptoContext);
     this.end = split.getStart() + split.getLength();
     this.conf = conf;
 

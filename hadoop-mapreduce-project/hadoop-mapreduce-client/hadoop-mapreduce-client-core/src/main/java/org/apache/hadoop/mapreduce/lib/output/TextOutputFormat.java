@@ -33,9 +33,12 @@ import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.GzipCodec;
+import org.apache.hadoop.io.crypto.CryptoCodec;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.OutputFormat;
 import org.apache.hadoop.mapreduce.RecordWriter;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
+import org.apache.hadoop.mapreduce.cryptocontext.CryptoContextHelper;
 import org.apache.hadoop.util.*;
 
 /** An {@link OutputFormat} that writes plain text files. */
@@ -127,6 +130,13 @@ public class TextOutputFormat<K, V> extends FileOutputFormat<K, V> {
       extension = codec.getDefaultExtension();
     }
     Path file = getDefaultWorkFile(job, extension);
+
+    if(codec != null &&
+        codec instanceof CryptoCodec &&
+        conf instanceof JobConf){
+      CryptoContextHelper.resetOutputCryptoContext((CryptoCodec) codec, (JobConf)conf, file);
+    }
+
     FileSystem fs = file.getFileSystem(conf);
     if (!isCompressed) {
       FSDataOutputStream fileOut = fs.create(file, false);

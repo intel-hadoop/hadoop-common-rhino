@@ -27,9 +27,12 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.*;
+import org.apache.hadoop.io.crypto.CryptoContext;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.RecordReader;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
+import org.apache.hadoop.mapreduce.cryptocontext.CryptoContextHelper;
 
 /** An {@link RecordReader} for {@link SequenceFile}s. */
 @InterfaceAudience.Public
@@ -51,7 +54,14 @@ public class SequenceFileRecordReader<K, V> extends RecordReader<K, V> {
     conf = context.getConfiguration();    
     Path path = fileSplit.getPath();
     FileSystem fs = path.getFileSystem(conf);
-    this.in = new SequenceFile.Reader(fs, path, conf);
+
+    //reset the key of the decryptor case
+    CryptoContext cryptoContext = null;
+    if(conf instanceof JobConf) {
+      cryptoContext = CryptoContextHelper.getInputCryptoContext((JobConf)conf, path);
+    }
+
+    this.in = new SequenceFile.Reader(fs, path, conf, cryptoContext);
     this.end = fileSplit.getStart() + fileSplit.getLength();
 
     if (fileSplit.getStart() > in.getPosition()) {

@@ -27,11 +27,14 @@ import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.SequenceFile.CompressionType;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.DefaultCodec;
+import org.apache.hadoop.io.crypto.CryptoCodec;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.JobContext;
 import org.apache.hadoop.mapreduce.OutputFormat;
 import org.apache.hadoop.mapreduce.RecordWriter;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
+import org.apache.hadoop.mapreduce.cryptocontext.CryptoContextHelper;
 import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
@@ -60,6 +63,13 @@ public class SequenceFileOutputFormat <K,V> extends FileOutputFormat<K, V> {
     }
     // get the path of the temporary output file 
     Path file = getDefaultWorkFile(context, "");
+
+    if(codec != null &&
+        codec instanceof CryptoCodec &&
+        conf instanceof JobConf){
+      CryptoContextHelper.resetOutputCryptoContext((CryptoCodec) codec, (JobConf)conf, file);
+    }
+
     FileSystem fs = file.getFileSystem(conf);
     return SequenceFile.createWriter(fs, conf, file,
              keyClass,
