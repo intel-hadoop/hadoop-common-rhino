@@ -27,6 +27,9 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.crypto.CryptoCodec;
+import org.apache.hadoop.io.crypto.Decryptor;
+import org.apache.hadoop.io.crypto.Encryptor;
 import org.apache.hadoop.util.ReflectionUtils;
 
 /**
@@ -107,6 +110,16 @@ public class CodecPool {
       LOG.info("Got brand-new compressor ["+codec.getDefaultExtension()+"]");
     } else {
       compressor.reinit(conf);
+
+      //reset to the codec context
+      if(compressor instanceof Encryptor &&
+          codec instanceof CryptoCodec ) {
+        Encryptor encryptor = (Encryptor) compressor;
+        CryptoCodec cryptoCodec = (CryptoCodec)codec;
+
+        encryptor.setCryptoContext(cryptoCodec.getCryptoContext());
+      }
+
       if(LOG.isDebugEnabled()) {
         LOG.debug("Got recycled compressor");
       }
@@ -133,6 +146,15 @@ public class CodecPool {
       decompressor = codec.createDecompressor();
       LOG.info("Got brand-new decompressor ["+codec.getDefaultExtension()+"]");
     } else {
+      //reset to the codec context
+      if(decompressor instanceof Decryptor &&
+          codec instanceof CryptoCodec ) {
+        Decryptor decryptor = (Decryptor) decompressor;
+        CryptoCodec cryptoCodec = (CryptoCodec)codec;
+
+        decryptor.setCryptoContext(cryptoCodec.getCryptoContext());
+      }
+
       if(LOG.isDebugEnabled()) {
         LOG.debug("Got recycled decompressor");
       }

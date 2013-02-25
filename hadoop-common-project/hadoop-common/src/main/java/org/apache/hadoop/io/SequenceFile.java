@@ -35,6 +35,10 @@ import org.apache.hadoop.io.compress.Decompressor;
 import org.apache.hadoop.io.compress.DefaultCodec;
 import org.apache.hadoop.io.compress.GzipCodec;
 import org.apache.hadoop.io.compress.zlib.ZlibFactory;
+import org.apache.hadoop.io.crypto.CryptoCodec;
+import org.apache.hadoop.io.crypto.CryptoContext;
+import org.apache.hadoop.io.crypto.Decryptor;
+import org.apache.hadoop.io.crypto.Key;
 import org.apache.hadoop.io.serializer.Deserializer;
 import org.apache.hadoop.io.serializer.Serializer;
 import org.apache.hadoop.io.serializer.SerializationFactory;
@@ -1647,6 +1651,15 @@ public class SequenceFile {
     public static Option stream(FSDataInputStream value) {
       return new InputStreamOption(value);
     }
+
+    /**
+     * Create an option to specify the crypto context with the sequence file.
+     * @param value the crypto context
+     * @return a new option
+     */
+    public static Option crypto(CryptoContext value) {
+      return new CryptoOption(value);
+    }
     
     /**
      * Create an option to specify the starting byte to read.
@@ -1686,6 +1699,13 @@ public class SequenceFile {
         extends Options.FSDataInputStreamOption 
         implements Option {
       private InputStreamOption(FSDataInputStream value) {
+        super(value);
+      }
+   }
+
+    private static class CryptoOption extends Options.CryptoContextOption
+                                      implements Option {
+      private CryptoOption(CryptoContext value){
         super(value);
       }
     }
@@ -1729,6 +1749,7 @@ public class SequenceFile {
       BufferSizeOption bufOpt = Options.getOption(BufferSizeOption.class,opts);
       OnlyHeaderOption headerOnly = 
         Options.getOption(OnlyHeaderOption.class, opts);
+      CryptoOption cryptoOpt = Options.getOption(CryptoOption.class, opts);
       // check for consistency
       if ((fileOpt == null) == (streamOpt == null)) {
         throw new 
@@ -1755,8 +1776,9 @@ public class SequenceFile {
         file = streamOpt.getValue();
       }
       long start = startOpt == null ? 0 : startOpt.getValue();
+      CryptoContext cryptoContext = cryptoOpt == null ? null : cryptoOpt.getValue();
       // really set up
-      initialize(filename, file, start, len, conf, headerOnly != null);
+      initialize(filename, file, start, len, conf, headerOnly != null, cryptoContext);
     }
 
     /**
@@ -1768,9 +1790,24 @@ public class SequenceFile {
      * @deprecated Use Reader(Configuration, Option...) instead.
      */
     @Deprecated
+		public Reader(FileSystem fs, Path file,
+									Configuration conf) throws IOException {
+			this(conf, file(file.makeQualified(fs)));
+		}
+
+    /**
+     * Construct a reader by opening a file from the given file system.
+     * @param fs The file system used to open the file.
+     * @param file The file being read.
+     * @param conf Configuration
+     * @param cryptoContext Crypto Context
+     * @throws IOException
+     * @deprecated Use Reader(Configuration, Option...) instead.
+     */
+    @Deprecated
     public Reader(FileSystem fs, Path file, 
-                  Configuration conf) throws IOException {
-      this(conf, file(file.makeQualified(fs)));
+        Configuration conf, CryptoContext cryptoContext) throws IOException {
+      this(conf, file(file.makeQualified(fs)), crypto(cryptoContext));
     }
 
     /**
@@ -1789,10 +1826,26 @@ public class SequenceFile {
       this(conf, stream(in), start(start), length(length));
     }
 
+    /**
+     * Construct a reader by the given input stream.
+     * @param in An input stream.
+     * @param buffersize unused
+     * @param start The starting position.
+     * @param length The length being read.
+     * @param conf Configuration
+     * @throws IOException
+     * @deprecated Use Reader(Configuration, Reader.Option...) instead.
+     */
+    @Deprecated
+    public Reader(FSDataInputStream in, int buffersize,
+        long start, long length, Configuration conf, CryptoContext cryptoContext) throws IOException {
+      this(conf, stream(in), start(start), length(length), crypto(cryptoContext));
+    }
+
     /** Common work of the constructors. */
     private void initialize(Path filename, FSDataInputStream in,
                             long start, long length, Configuration conf,
-                            boolean tempReader) throws IOException {
+                            boolean tempReader, CryptoContext cryptoContext) throws IOException {
       if (in == null) {
         throw new IllegalArgumentException("in == null");
       }
@@ -1807,7 +1860,7 @@ public class SequenceFile {
         if (end < length) {
           end = Long.MAX_VALUE;
         }
-        init(tempReader);
+        init(tempReader, cryptoContext);
         succeeded = true;
       } finally {
         if (!succeeded) {
@@ -1840,7 +1893,7 @@ public class SequenceFile {
      *                  <code>false</code> otherwise.
      * @throws IOException
      */
-    private void init(boolean tempReader) throws IOException {
+    private void init(boolean tempReader, CryptoContext cryptoContext) throws IOException {
       byte[] versionBlock = new byte[VERSION.length];
       in.readFully(versionBlock);
 
@@ -1897,7 +1950,13 @@ public class SequenceFile {
           ((Configurable)codec).setConf(conf);
         }
       }
-      
+
+      if(codec instanceof CryptoCodec &&
+          cryptoContext != null) {
+        CryptoCodec cryptCodec = (CryptoCodec)codec;
+        cryptCodec.setCryptoContext(cryptoContext);
+      }
+
       this.metadata = new Metadata();
       if (version >= VERSION_WITH_METADATA) {    // if version >= 6
         this.metadata.readFields(in);
