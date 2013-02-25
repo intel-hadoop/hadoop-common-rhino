@@ -29,6 +29,8 @@ import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.SequenceFile.CompressionType;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.DefaultCodec;
+import org.apache.hadoop.io.crypto.CryptoCodec;
+import org.apache.hadoop.mapreduce.cryptocontext.CryptoContextHelper;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -59,6 +61,9 @@ extends FileOutputFormat<WritableComparable, Writable> {
       Class<? extends CompressionCodec> codecClass = getOutputCompressorClass(job,
 	  DefaultCodec.class);
       codec = ReflectionUtils.newInstance(codecClass, job);
+      if(codec instanceof CryptoCodec) {
+        CryptoContextHelper.resetOutputCryptoContext((CryptoCodec) codec, job, file);
+      }
     }
     
     // ignore the progress parameter, since MapFile is local

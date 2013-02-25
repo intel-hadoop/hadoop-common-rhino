@@ -31,6 +31,8 @@ import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.SequenceFile.CompressionType;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.DefaultCodec;
+import org.apache.hadoop.io.crypto.CryptoCodec;
+import org.apache.hadoop.mapreduce.cryptocontext.CryptoContextHelper;
 import org.apache.hadoop.util.Progressable;
 import org.apache.hadoop.util.ReflectionUtils;
 
@@ -59,6 +61,10 @@ public class SequenceFileOutputFormat <K,V> extends FileOutputFormat<K, V> {
       Class<? extends CompressionCodec> codecClass = getOutputCompressorClass(job,
 	  DefaultCodec.class);
       codec = ReflectionUtils.newInstance(codecClass, job);
+
+      if(codec instanceof CryptoCodec){
+        CryptoContextHelper.resetOutputCryptoContext((CryptoCodec) codec, job, file);
+      }
     }
     final SequenceFile.Writer out = 
       SequenceFile.createWriter(fs, job, file,

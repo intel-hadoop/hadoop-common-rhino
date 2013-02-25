@@ -45,7 +45,9 @@ import org.apache.hadoop.io.WritableFactory;
 import org.apache.hadoop.io.SequenceFile.CompressionType;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.DefaultCodec;
+import org.apache.hadoop.io.crypto.CryptoCodec;
 import org.apache.hadoop.mapred.SortedRanges.SkipRangeIterator;
+import org.apache.hadoop.mapreduce.cryptocontext.CryptoContextHelper;
 import org.apache.hadoop.mapreduce.MRConfig;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
 import org.apache.hadoop.mapreduce.TaskCounter;
@@ -137,7 +139,13 @@ public class ReduceTask extends Task {
     if (conf.getCompressMapOutput()) {
       Class<? extends CompressionCodec> codecClass =
         conf.getMapOutputCompressorClass(DefaultCodec.class);
-      return ReflectionUtils.newInstance(codecClass, conf);
+      CompressionCodec codec = ReflectionUtils.newInstance(codecClass, conf);
+
+      if(codec instanceof CryptoCodec) {
+        CryptoContextHelper.resetReduceInputCryptoContext((CryptoCodec)codec, conf, null);
+      }
+
+      return codec;
     } 
 
     return null;
