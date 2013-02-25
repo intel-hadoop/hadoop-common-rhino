@@ -22,6 +22,7 @@ import java.util.Arrays;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.crypto.CryptoContext;
 
 /**
  * This class allows generic access to variable length type-safe parameter
@@ -105,6 +106,16 @@ public class Options {
       this.value = value;
     }
     public FSDataOutputStream getValue() {
+      return value;
+    }
+  }
+
+  public static abstract class CryptoContextOption {
+    private final CryptoContext value;
+    protected CryptoContextOption(CryptoContext value) {
+      this.value = value;
+    }
+    public CryptoContext getValue(){
       return value;
     }
   }
