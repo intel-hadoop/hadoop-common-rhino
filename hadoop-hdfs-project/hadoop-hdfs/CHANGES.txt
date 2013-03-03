@@ -316,6 +316,9 @@ Release 2.0.4-beta - UNRELEASED
     HDFS-4304. Make FSEditLogOp.MAX_OP_SIZE configurable. (Colin Patrick
     McCabe via atm)
 
+    HDFS-4518. Finer grained metrics for HDFS capacity.
+    (Arpit Agarwal via suresh)
+
   OPTIMIZATIONS
 
   BUG FIXES
@@ -332,6 +335,9 @@ Release 2.0.4-beta - UNRELEASED
 
     HDFS-4482. ReplicationMonitor thread can exit with NPE due to the race 
     between delete and replication of same file. (umamahesh)
+
+    HDFS-4235. When outputting XML, OfflineEditsViewer can't handle some edits
+    containing non-ASCII strings. (Colin Patrick McCabe via atm)
 
 Release 2.0.3-alpha - 2013-02-06
 
