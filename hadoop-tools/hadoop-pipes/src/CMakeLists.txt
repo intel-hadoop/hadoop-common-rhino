@@ -71,5 +71,6 @@ add_library(hadooppipes STATIC
 )
 target_link_libraries(hadooppipes
     ${OPENSSL_LIBRARIES}
+    crypto
     pthread
 )
