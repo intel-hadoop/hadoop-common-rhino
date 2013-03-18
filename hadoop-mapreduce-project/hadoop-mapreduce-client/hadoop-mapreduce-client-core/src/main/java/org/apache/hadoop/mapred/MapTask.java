@@ -1170,8 +1170,9 @@ public class MapTask extends Task {
       equator = pos;
       // set index prior to first entry, aligned at meta boundary
       final int aligned = pos - (pos % METASIZE);
-      kvindex =
-        ((aligned - METASIZE + kvbuffer.length) % kvbuffer.length) / 4;
+      // Cast one of the operands to long to ensure large values don't cause int
+      // overflow
+      kvindex = (int) (((long) aligned - METASIZE + kvbuffer.length) % kvbuffer.length) / 4;
       if (LOG.isInfoEnabled()) {
         LOG.info("(EQUATOR) " + pos + " kvi " + kvindex +
             "(" + (kvindex * 4) + ")");
@@ -1188,8 +1189,9 @@ public class MapTask extends Task {
       bufstart = bufend = e;
       final int aligned = e - (e % METASIZE);
       // set start/end to point to first meta record
-      kvstart = kvend =
-        ((aligned - METASIZE + kvbuffer.length) % kvbuffer.length) / 4;
+      // Cast one of the operands to long to ensure large values don't cause int
+      // overflow
+      kvstart = kvend = (int) (((long) aligned - METASIZE + kvbuffer.length) % kvbuffer.length) / 4;
       if (LOG.isInfoEnabled()) {
         LOG.info("(RESET) equator " + e + " kv " + kvstart + "(" +
           (kvstart * 4) + ")" + " kvi " + kvindex + "(" + (kvindex * 4) + ")");
@@ -1753,7 +1755,7 @@ public class MapTask extends Task {
           this.start = 0;
         }
 
-        super.reset(this.buffer, this.start, this.length);
+        super.reset(this.buffer, this.start, this.length - this.start);
       }
     }
 
