@@ -73,6 +73,7 @@ import org.apache.hadoop.conf.Configuration.IntegerRanges;
 import org.apache.hadoop.fs.CommonConfigurationKeys;
 import org.apache.hadoop.fs.CommonConfigurationKeysPublic;
 import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.io.DataOutputBuffer;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableUtils;
@@ -107,6 +108,7 @@ import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.util.Time;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.protobuf.CodedOutputStream;
 
 /** An abstract IPC service.  IPC calls take a single {@link Writable} as a
  * parameter, and return a {@link Writable} as their value.  A service runs on
@@ -202,7 +204,8 @@ public abstract class Server {
   // 6 : Made RPC Request header explicit
   // 7 : Changed Ipc Connection Header to use Protocol buffers
   // 8 : SASL server always sends a final response
-  public static final byte CURRENT_VERSION = 8;
+  // 9 : Changes to protocol for HADOOP-8990
+  public static final byte CURRENT_VERSION = 9;
 
   /**
    * Initial and max size of response buffer
@@ -433,6 +436,11 @@ public abstract class Server {
   @VisibleForTesting
   Iterable<? extends Thread> getHandlers() {
     return Arrays.asList(handlers);
+  }
+
+  @VisibleForTesting
+  List<Connection> getConnections() {
+    return connectionList;
   }
 
   /**
@@ -1101,6 +1109,7 @@ public abstract class Server {
     private ByteBuffer connectionHeaderBuf = null;
     private ByteBuffer unwrappedData;
     private ByteBuffer unwrappedDataLengthBuffer;
+    private int serviceClass;
     
     UserGroupInformation user = null;
     public UserGroupInformation attemptingUser = null; // user name before auth
@@ -1228,7 +1237,8 @@ public abstract class Server {
           rpcMetrics.incrAuthenticationFailures();
           String clientIP = this.toString();
           // attempting user could be null
-          AUDITLOG.warn(AUTH_FAILED_FOR + clientIP + ":" + attemptingUser);
+          AUDITLOG.warn(AUTH_FAILED_FOR + clientIP + ":" + attemptingUser +
+            " (" + e.getLocalizedMessage() + ")");
           throw e;
         }
         if (saslServer.isComplete() && replyToken == null) {
@@ -1311,14 +1321,17 @@ public abstract class Server {
         if (!connectionHeaderRead) {
           //Every connection is expected to send the header.
           if (connectionHeaderBuf == null) {
-            connectionHeaderBuf = ByteBuffer.allocate(3);
+            connectionHeaderBuf = ByteBuffer.allocate(4);
           }
           count = channelRead(channel, connectionHeaderBuf);
           if (count < 0 || connectionHeaderBuf.remaining() > 0) {
             return count;
           }
           int version = connectionHeaderBuf.get(0);
-          byte[] method = new byte[] {connectionHeaderBuf.get(1)};
+          // TODO we should add handler for service class later
+          this.setServiceClass(connectionHeaderBuf.get(1));
+
+          byte[] method = new byte[] {connectionHeaderBuf.get(2)};
           authMethod = AuthMethod.read(new DataInputStream(
               new ByteArrayInputStream(method)));
           dataLengthBuffer.flip();
@@ -1342,7 +1355,7 @@ public abstract class Server {
           }
           
           IpcSerializationType serializationType = IpcSerializationType
-              .fromByte(connectionHeaderBuf.get(2));
+              .fromByte(connectionHeaderBuf.get(3));
           if (serializationType != IpcSerializationType.PROTOBUF) {
             respondUnsupportedSerialization(serializationType);
             return -1;
@@ -1512,10 +1525,15 @@ public abstract class Server {
       " cannot communicate with client version " + clientVersion;
       ByteArrayOutputStream buffer = new ByteArrayOutputStream();
       
-      if (clientVersion >= 3) {
+      if (clientVersion >= 9) {
+        // Versions >>9  understand the normal response
         Call fakeCall =  new Call(-1, null, this);
-        // Versions 3 and greater can interpret this exception
-        // response in the same manner
+        setupResponse(buffer, fakeCall, RpcStatusProto.FATAL,
+            null, VersionMismatch.class.getName(), errMsg);
+        responder.doRespond(fakeCall);
+      } else if (clientVersion >= 3) {
+        Call fakeCall =  new Call(-1, null, this);
+        // Versions 3 to 8 use older response
         setupResponseOldVersionFatal(buffer, fakeCall,
             null, VersionMismatch.class.getName(), errMsg);
 
@@ -1727,6 +1745,22 @@ public abstract class Server {
       return true;
     }
     
+    /**
+     * Get service class for connection
+     * @return the serviceClass
+     */
+    public int getServiceClass() {
+      return serviceClass;
+    }
+
+    /**
+     * Set service class for connection
+     * @param serviceClass the serviceClass to set
+     */
+    public void setServiceClass(int serviceClass) {
+      this.serviceClass = serviceClass;
+    }
+
     private synchronized void close() throws IOException {
       disposeSasl();
       data = null;
@@ -1997,17 +2031,34 @@ public abstract class Server {
   throws IOException {
     responseBuf.reset();
     DataOutputStream out = new DataOutputStream(responseBuf);
-    RpcResponseHeaderProto.Builder response =  
+    RpcResponseHeaderProto.Builder headerBuilder =  
         RpcResponseHeaderProto.newBuilder();
-    response.setCallId(call.callId);
-    response.setStatus(status);
-    response.setServerIpcVersionNum(Server.CURRENT_VERSION);
-
+    headerBuilder.setCallId(call.callId);
+    headerBuilder.setStatus(status);
+    headerBuilder.setServerIpcVersionNum(Server.CURRENT_VERSION);
 
     if (status == RpcStatusProto.SUCCESS) {
+      RpcResponseHeaderProto header = headerBuilder.build();
+      final int headerLen = header.getSerializedSize();
+      int fullLength  = CodedOutputStream.computeRawVarint32Size(headerLen) +
+          headerLen;
       try {
-        response.build().writeDelimitedTo(out);
-        rv.write(out);
+        if (rv instanceof ProtobufRpcEngine.RpcWrapper) {
+          ProtobufRpcEngine.RpcWrapper resWrapper = 
+              (ProtobufRpcEngine.RpcWrapper) rv;
+          fullLength += resWrapper.getLength();
+          out.writeInt(fullLength);
+          header.writeDelimitedTo(out);
+          rv.write(out);
+        } else { // Have to serialize to buffer to get len
+          final DataOutputBuffer buf = new DataOutputBuffer();
+          rv.write(buf);
+          byte[] data = buf.getData();
+          fullLength += buf.getLength();
+          out.writeInt(fullLength);
+          header.writeDelimitedTo(out);
+          out.write(data, 0, buf.getLength());
+        }
       } catch (Throwable t) {
         LOG.warn("Error serializing call response for call " + call, t);
         // Call back to same function - this is OK since the
@@ -2019,9 +2070,14 @@ public abstract class Server {
         return;
       }
     } else { // Rpc Failure
-      response.setExceptionClassName(errorClass);
-      response.setErrorMsg(error);
-      response.build().writeDelimitedTo(out);
+      headerBuilder.setExceptionClassName(errorClass);
+      headerBuilder.setErrorMsg(error);
+      RpcResponseHeaderProto header = headerBuilder.build();
+      int headerLen = header.getSerializedSize();
+      final int fullLength  = 
+          CodedOutputStream.computeRawVarint32Size(headerLen) + headerLen;
+      out.writeInt(fullLength);
+      header.writeDelimitedTo(out);
     }
     if (call.connection.useWrap) {
       wrapWithSasl(responseBuf, call);

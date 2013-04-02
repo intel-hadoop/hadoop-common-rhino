@@ -50,12 +50,12 @@ import org.apache.hadoop.yarn.factory.providers.RecordFactoryProvider;
 import org.apache.hadoop.yarn.ipc.YarnRPC;
 import org.apache.hadoop.yarn.server.api.ResourceTracker;
 import org.apache.hadoop.yarn.server.api.protocolrecords.NodeHeartbeatRequest;
+import org.apache.hadoop.yarn.server.api.protocolrecords.NodeHeartbeatResponse;
 import org.apache.hadoop.yarn.server.api.protocolrecords.RegisterNodeManagerRequest;
-import org.apache.hadoop.yarn.server.api.records.HeartbeatResponse;
+import org.apache.hadoop.yarn.server.api.protocolrecords.RegisterNodeManagerResponse;
 import org.apache.hadoop.yarn.server.api.records.MasterKey;
 import org.apache.hadoop.yarn.server.api.records.NodeAction;
 import org.apache.hadoop.yarn.server.api.records.NodeStatus;
-import org.apache.hadoop.yarn.server.api.records.RegistrationResponse;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.Container;
 import org.apache.hadoop.yarn.server.nodemanager.metrics.NodeManagerMetrics;
 import org.apache.hadoop.yarn.service.AbstractService;
@@ -71,7 +71,7 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
   private final Dispatcher dispatcher;
 
   private NodeId nodeId;
-  private long heartBeatInterval;
+  private long nextHeartBeatInterval;
   private ResourceTracker resourceTracker;
   private InetSocketAddress rmAddress;
   private Resource totalResource;
@@ -103,9 +103,7 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
         YarnConfiguration.RM_RESOURCE_TRACKER_ADDRESS,
         YarnConfiguration.DEFAULT_RM_RESOURCE_TRACKER_ADDRESS,
         YarnConfiguration.DEFAULT_RM_RESOURCE_TRACKER_PORT);
-    this.heartBeatInterval =
-        conf.getLong(YarnConfiguration.NM_TO_RM_HEARTBEAT_INTERVAL_MS,
-            YarnConfiguration.DEFAULT_NM_TO_RM_HEARTBEAT_INTERVAL_MS);
+
     int memoryMb = 
         conf.getInt(
             YarnConfiguration.NM_PMEM_MB, YarnConfiguration.DEFAULT_NM_PMEM_MB);
@@ -234,7 +232,7 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
     request.setHttpPort(this.httpPort);
     request.setResource(this.totalResource);
     request.setNodeId(this.nodeId);
-    RegistrationResponse regResponse;
+    RegisterNodeManagerResponse regNMResponse;
 
     while(true) {
       try {
@@ -242,9 +240,8 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
         LOG.info("Connecting to ResourceManager at " + this.rmAddress
             + ". current no. of attempts is " + rmRetryCount);
         this.resourceTracker = getRMClient();
-        regResponse =
-            this.resourceTracker.registerNodeManager(request)
-                .getRegistrationResponse();
+        regNMResponse =
+            this.resourceTracker.registerNodeManager(request);
         break;
       } catch(Throwable e) {
         LOG.warn("Trying to connect to ResourceManager, " +
@@ -267,13 +264,13 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
       }
     }
     // if the Resourcemanager instructs NM to shutdown.
-    if (NodeAction.SHUTDOWN.equals(regResponse.getNodeAction())) {
+    if (NodeAction.SHUTDOWN.equals(regNMResponse.getNodeAction())) {
       throw new YarnException(
           "Recieved SHUTDOWN signal from Resourcemanager ,Registration of NodeManager failed");
     }
 
     if (UserGroupInformation.isSecurityEnabled()) {
-      MasterKey masterKey = regResponse.getMasterKey();
+      MasterKey masterKey = regNMResponse.getMasterKey();
       // do this now so that its set before we start heartbeating to RM
       LOG.info("Security enabled - updating secret keys now");
       // It is expected that status updater is started by this point and
@@ -395,9 +392,6 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
         while (!isStopped) {
           // Send heartbeat
           try {
-            synchronized (heartbeatMonitor) {
-              heartbeatMonitor.wait(heartBeatInterval);
-            }
             NodeStatus nodeStatus = getNodeStatus();
             nodeStatus.setResponseId(lastHeartBeatID);
             
@@ -408,9 +402,10 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
               request.setLastKnownMasterKey(NodeStatusUpdaterImpl.this.context
                 .getContainerTokenSecretManager().getCurrentKey());
             }
-            HeartbeatResponse response =
-              resourceTracker.nodeHeartbeat(request).getHeartbeatResponse();
-
+            NodeHeartbeatResponse response =
+              resourceTracker.nodeHeartbeat(request);
+            //get next heartbeat interval from response
+            nextHeartBeatInterval = response.getNextHeartBeatInterval();
             // See if the master-key has rolled over
             if (isSecurityEnabled()) {
               MasterKey updatedMasterKey = response.getMasterKey();
@@ -439,14 +434,14 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
 
             lastHeartBeatID = response.getResponseId();
             List<ContainerId> containersToCleanup = response
-                .getContainersToCleanupList();
+                .getContainersToCleanup();
             if (containersToCleanup.size() != 0) {
               dispatcher.getEventHandler().handle(
                   new CMgrCompletedContainersEvent(containersToCleanup, 
                       CMgrCompletedContainersEvent.Reason.BY_RESOURCEMANAGER));
             }
             List<ApplicationId> appsToCleanup =
-                response.getApplicationsToCleanupList();
+                response.getApplicationsToCleanup();
             //Only start tracking for keepAlive on FINISH_APP
             trackAppsForKeepAlive(appsToCleanup);
             if (appsToCleanup.size() != 0) {
@@ -457,6 +452,17 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
             // TODO Better error handling. Thread can die with the rest of the
             // NM still running.
             LOG.error("Caught exception in status-updater", e);
+          } finally {
+            synchronized (heartbeatMonitor) {
+              nextHeartBeatInterval = nextHeartBeatInterval <= 0 ?
+                  YarnConfiguration.DEFAULT_RM_NM_HEARTBEAT_INTERVAL_MS :
+                    nextHeartBeatInterval;
+              try {
+                heartbeatMonitor.wait(nextHeartBeatInterval);
+              } catch (InterruptedException e) {
+                // Do Nothing
+              }
+            }
           }
         }
       }

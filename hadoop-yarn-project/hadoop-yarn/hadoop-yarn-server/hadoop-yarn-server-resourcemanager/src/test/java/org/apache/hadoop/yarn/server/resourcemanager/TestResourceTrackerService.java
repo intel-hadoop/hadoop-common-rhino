@@ -36,9 +36,9 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.event.Dispatcher;
 import org.apache.hadoop.yarn.event.DrainDispatcher;
 import org.apache.hadoop.yarn.event.EventHandler;
+import org.apache.hadoop.yarn.server.api.protocolrecords.NodeHeartbeatResponse;
 import org.apache.hadoop.yarn.server.api.protocolrecords.RegisterNodeManagerRequest;
 import org.apache.hadoop.yarn.server.api.protocolrecords.RegisterNodeManagerResponse;
-import org.apache.hadoop.yarn.server.api.records.HeartbeatResponse;
 import org.apache.hadoop.yarn.server.api.records.NodeAction;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.QueueMetrics;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.SchedulerEvent;
@@ -52,6 +52,29 @@ public class TestResourceTrackerService {
       "test.build.data", "/tmp"), "decommision");
   private File hostFile = new File(TEMP_DIR + File.separator + "hostFile.txt");
   private MockRM rm;
+
+  /**
+   * Test RM read NM next heartBeat Interval correctly from Configuration file,
+   * and NM get next heartBeat Interval from RM correctly
+   */
+  @Test (timeout = 5000)
+  public void testGetNextHeartBeatInterval() throws Exception {
+    Configuration conf = new Configuration();
+    conf.set(YarnConfiguration.RM_NM_HEARTBEAT_INTERVAL_MS, "4000");
+
+    rm = new MockRM(conf);
+    rm.start();
+
+    MockNM nm1 = rm.registerNode("host1:1234", 5120);
+    MockNM nm2 = rm.registerNode("host2:5678", 10240);
+
+    NodeHeartbeatResponse nodeHeartbeat = nm1.nodeHeartbeat(true);
+    Assert.assertEquals(4000, nodeHeartbeat.getNextHeartBeatInterval());
+
+    NodeHeartbeatResponse nodeHeartbeat2 = nm2.nodeHeartbeat(true);
+    Assert.assertEquals(4000, nodeHeartbeat2.getNextHeartBeatInterval());
+
+  }
 
   /**
    * Decommissioning using a pre-configured include hosts file
@@ -75,7 +98,7 @@ public class TestResourceTrackerService {
     assert(metrics != null);
     int metricCount = metrics.getNumDecommisionedNMs();
 
-    HeartbeatResponse nodeHeartbeat = nm1.nodeHeartbeat(true);
+    NodeHeartbeatResponse nodeHeartbeat = nm1.nodeHeartbeat(true);
     Assert.assertTrue(NodeAction.NORMAL.equals(nodeHeartbeat.getNodeAction()));
     nodeHeartbeat = nm2.nodeHeartbeat(true);
     Assert.assertTrue(NodeAction.NORMAL.equals(nodeHeartbeat.getNodeAction()));
@@ -124,7 +147,7 @@ public class TestResourceTrackerService {
 
     int metricCount = ClusterMetrics.getMetrics().getNumDecommisionedNMs();
 
-    HeartbeatResponse nodeHeartbeat = nm1.nodeHeartbeat(true);
+    NodeHeartbeatResponse nodeHeartbeat = nm1.nodeHeartbeat(true);
     Assert.assertTrue(NodeAction.NORMAL.equals(nodeHeartbeat.getNodeAction()));
     nodeHeartbeat = nm2.nodeHeartbeat(true);
     Assert.assertTrue(NodeAction.NORMAL.equals(nodeHeartbeat.getNodeAction()));
@@ -161,7 +184,7 @@ public class TestResourceTrackerService {
     ClusterMetrics metrics = ClusterMetrics.getMetrics();
     assert(metrics != null);
     int initialMetricCount = metrics.getNumDecommisionedNMs();
-    HeartbeatResponse nodeHeartbeat = nm1.nodeHeartbeat(true);
+    NodeHeartbeatResponse nodeHeartbeat = nm1.nodeHeartbeat(true);
     Assert.assertEquals(
         NodeAction.NORMAL,
         nodeHeartbeat.getNodeAction());
@@ -198,7 +221,7 @@ public class TestResourceTrackerService {
     ClusterMetrics metrics = ClusterMetrics.getMetrics();
     assert(metrics != null);
     int initialMetricCount = metrics.getNumDecommisionedNMs();
-    HeartbeatResponse nodeHeartbeat = nm1.nodeHeartbeat(true);
+    NodeHeartbeatResponse nodeHeartbeat = nm1.nodeHeartbeat(true);
     Assert.assertEquals(
         NodeAction.NORMAL,
         nodeHeartbeat.getNodeAction());
@@ -241,7 +264,7 @@ public class TestResourceTrackerService {
     req.setHttpPort(1234);
     // trying to register a invalid node.
     RegisterNodeManagerResponse response = resourceTrackerService.registerNodeManager(req);
-    Assert.assertEquals(NodeAction.SHUTDOWN,response.getRegistrationResponse().getNodeAction());
+    Assert.assertEquals(NodeAction.SHUTDOWN,response.getNodeAction());
   }
 
   @Test
@@ -254,7 +277,7 @@ public class TestResourceTrackerService {
     MockNM nm2 = rm.registerNode("host2:1234", 2048);
 
     int initialMetricCount = ClusterMetrics.getMetrics().getNumRebootedNMs();
-    HeartbeatResponse nodeHeartbeat = nm1.nodeHeartbeat(true);
+    NodeHeartbeatResponse nodeHeartbeat = nm1.nodeHeartbeat(true);
     Assert.assertTrue(NodeAction.NORMAL.equals(nodeHeartbeat.getNodeAction()));
 
     nodeHeartbeat = nm2.nodeHeartbeat(
@@ -351,7 +374,7 @@ public class TestResourceTrackerService {
 
     // reconnect of healthy node
     nm1 = rm.registerNode("host1:1234", 5120);
-    HeartbeatResponse response = nm1.nodeHeartbeat(true);
+    NodeHeartbeatResponse response = nm1.nodeHeartbeat(true);
     Assert.assertTrue(NodeAction.NORMAL.equals(response.getNodeAction()));
     dispatcher.await();
     Assert.assertEquals(expectedNMs, ClusterMetrics.getMetrics().getNumActiveNMs());

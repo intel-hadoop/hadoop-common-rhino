@@ -42,12 +42,6 @@ public interface ApplicationConstants {
    * only
    */
   public static final String AM_CONTAINER_ID_ENV = "AM_CONTAINER_ID";
-  
-  /**
-   * The environment variable for APPLICATION_ATTEMPT_ID. Set in AppMaster
-   * environment only
-   */
-  public static final String AM_APP_ATTEMPT_ID_ENV = "AM_APP_ATTEMPT_ID";
 
   /**
    * The environment variable for the NM_HOST. Set in the AppMaster environment
@@ -91,6 +85,12 @@ public interface ApplicationConstants {
   public static final String STDERR = "stderr";
 
   public static final String STDOUT = "stdout";
+
+  /**
+   * The environment variable for MAX_APP_ATTEMPTS. Set in AppMaster environment
+   * only
+   */
+  public static final String MAX_APP_ATTEMPTS_ENV = "MAX_APP_ATTEMPTS";
 
   /**
    * Environment for Applications.
