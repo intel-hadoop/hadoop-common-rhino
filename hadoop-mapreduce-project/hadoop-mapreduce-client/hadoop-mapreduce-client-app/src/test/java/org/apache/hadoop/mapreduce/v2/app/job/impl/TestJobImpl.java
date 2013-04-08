@@ -114,6 +114,7 @@ public class TestJobImpl {
     conf.set(MRJobConfig.WORKFLOW_NODE_NAME, "testNodeName");
     conf.set(MRJobConfig.WORKFLOW_ADJACENCY_PREFIX_STRING + "key1", "value1");
     conf.set(MRJobConfig.WORKFLOW_ADJACENCY_PREFIX_STRING + "key2", "value2");
+    conf.set(MRJobConfig.WORKFLOW_TAGS, "tag1,tag2");
     
  
     AsyncDispatcher dispatcher = new AsyncDispatcher();
@@ -126,7 +127,8 @@ public class TestJobImpl {
     commitHandler.start();
 
     JobSubmittedEventHandler jseHandler = new JobSubmittedEventHandler("testId",
-        "testName", "testNodeName", "\"key2\"=\"value2\" \"key1\"=\"value1\" ");
+        "testName", "testNodeName", "\"key2\"=\"value2\" \"key1\"=\"value1\" ",
+        "tag1,tag2");
     dispatcher.register(EventType.class, jseHandler);
     JobImpl job = createStubbedJob(conf, dispatcher, 0);
     job.handle(new JobEvent(job.getID(), JobEventType.JOB_INIT));
@@ -188,6 +190,68 @@ public class TestJobImpl {
     // let the committer complete and verify the job succeeds
     syncBarrier.await();
     assertJobState(job, JobStateInternal.SUCCEEDED);
+    dispatcher.stop();
+    commitHandler.stop();
+  }
+
+  @Test(timeout=20000)
+  public void testRebootedDuringSetup() throws Exception{
+    Configuration conf = new Configuration();
+    conf.set(MRJobConfig.MR_AM_STAGING_DIR, stagingDir);
+    AsyncDispatcher dispatcher = new AsyncDispatcher();
+    dispatcher.init(conf);
+    dispatcher.start();
+    OutputCommitter committer = new StubbedOutputCommitter() {
+      @Override
+      public synchronized void setupJob(JobContext jobContext)
+          throws IOException {
+        while(!Thread.interrupted()){
+          try{
+            wait();
+          }catch (InterruptedException e) {
+          }
+        }
+      }
+    };
+    CommitterEventHandler commitHandler =
+        createCommitterEventHandler(dispatcher, committer);
+    commitHandler.init(conf);
+    commitHandler.start();
+
+    JobImpl job = createStubbedJob(conf, dispatcher, 2);
+    JobId jobId = job.getID();
+    job.handle(new JobEvent(jobId, JobEventType.JOB_INIT));
+    assertJobState(job, JobStateInternal.INITED);
+    job.handle(new JobEvent(jobId, JobEventType.JOB_START));
+    assertJobState(job, JobStateInternal.SETUP);
+
+    job.handle(new JobEvent(job.getID(), JobEventType.JOB_AM_REBOOT));
+    assertJobState(job, JobStateInternal.REBOOT);
+    dispatcher.stop();
+    commitHandler.stop();
+  }
+
+  @Test(timeout=20000)
+  public void testRebootedDuringCommit() throws Exception {
+    Configuration conf = new Configuration();
+    conf.set(MRJobConfig.MR_AM_STAGING_DIR, stagingDir);
+    AsyncDispatcher dispatcher = new AsyncDispatcher();
+    dispatcher.init(conf);
+    dispatcher.start();
+    CyclicBarrier syncBarrier = new CyclicBarrier(2);
+    OutputCommitter committer = new WaitingOutputCommitter(syncBarrier, true);
+    CommitterEventHandler commitHandler =
+        createCommitterEventHandler(dispatcher, committer);
+    commitHandler.init(conf);
+    commitHandler.start();
+
+    JobImpl job = createRunningStubbedJob(conf, dispatcher, 2);
+    completeJobTasks(job);
+    assertJobState(job, JobStateInternal.COMMITTING);
+
+    syncBarrier.await();
+    job.handle(new JobEvent(job.getID(), JobEventType.JOB_AM_REBOOT));
+    assertJobState(job, JobStateInternal.REBOOT);
     dispatcher.stop();
     commitHandler.stop();
   }
@@ -644,14 +708,18 @@ public class TestJobImpl {
     
     private String workflowAdjacencies;
     
+    private String workflowTags;
+    
     private Boolean assertBoolean;
 
     public JobSubmittedEventHandler(String workflowId, String workflowName,
-        String workflowNodeName, String workflowAdjacencies) {
+        String workflowNodeName, String workflowAdjacencies,
+        String workflowTags) {
       this.workflowId = workflowId;
       this.workflowName = workflowName;
       this.workflowNodeName = workflowNodeName;
       this.workflowAdjacencies = workflowAdjacencies;
+      this.workflowTags = workflowTags;
       assertBoolean = null;
     }
 
@@ -674,6 +742,10 @@ public class TestJobImpl {
         return;
       }
       if (!workflowAdjacencies.equals(jsEvent.getWorkflowAdjacencies())) {
+        setAssertValue(false);
+        return;
+      }
+      if (!workflowTags.equals(jsEvent.getWorkflowTags())) {
         setAssertValue(false);
         return;
       }
