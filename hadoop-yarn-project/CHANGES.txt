@@ -25,6 +25,12 @@ Trunk - Unreleased
 
     YARN-491. TestContainerLogsPage fails on Windows. (Chris Nauroth via hitesh)
 
+    YARN-557. Fix TestUnmanagedAMLauncher failure on Windows. (Chris Nauroth via
+    vinodkv)
+
+    YARN-524 TestYarnVersionInfo failing if generated properties doesn't
+    include an SVN URL. (stevel)
+
   BREAKDOWN OF HADOOP-8562 SUBTASKS
 
     YARN-158. Yarn creating package-info.java must not depend on sh.
@@ -55,9 +61,6 @@ Trunk - Unreleased
     YARN-359. Fixing commands for container signalling in Windows. (Chris Nauroth
     via vinodkv)
     
-    YARN-524 TestYarnVersionInfo failing if generated properties doesn't
-    include an SVN URL(stevel)
-
 Release 2.0.5-beta - UNRELEASED
 
   INCOMPATIBLE CHANGES
@@ -125,6 +128,9 @@ Release 2.0.5-beta - UNRELEASED
 
     YARN-193. Scheduler.normalizeRequest does not account for allocation
     requests that exceed maximumAllocation limits (Zhijie Shen via bikas)
+
+    YARN-479. NM retry behavior for connection to RM should be similar for
+    lost heartbeats (Jian He via bikas)
 
   OPTIMIZATIONS
 
@@ -197,6 +203,16 @@ Release 2.0.5-beta - UNRELEASED
     YARN-532. Change RMAdmin and Localization client protocol PB implementations
     to implement closeable so that they can be stopped when needed via
     RPC.stopProxy(). (Siddharth Seth via vinodkv)
+
+    YARN-99. Modify private distributed cache to localize files such that no
+    local directory hits unix file count limits and thus prevent job failures.
+    (Omkar Vinit Joshi via vinodkv)
+
+    YARN-112. Fixed a race condition during localization that fails containers.
+    (Omkar Vinit Joshi via vinodkv)
+
+    YARN-534. Change RM restart recovery to also account for AM max-attempts 
+    configuration after the restart. (Jian He via vinodkv)
 
 Release 2.0.4-alpha - UNRELEASED
 

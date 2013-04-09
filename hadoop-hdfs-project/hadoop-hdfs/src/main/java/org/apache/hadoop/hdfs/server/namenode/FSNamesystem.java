@@ -1378,14 +1378,14 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
         long now = now();
         final INodeFile inode = INodeFile.valueOf(dir.getINode(src), src);
         if (doAccessTime && isAccessTimeSupported()) {
-          if (now <= inode.getAccessTime() + getAccessTimePrecision()) {
+          if (now > inode.getAccessTime() + getAccessTimePrecision()) {
             // if we have to set access time but we only have the readlock, then
             // restart this entire operation with the writeLock.
             if (isReadOp) {
               continue;
             }
+            dir.setTimes(src, inode, -1, now, false);
           }
-          dir.setTimes(src, inode, -1, now, false);
         }
         return blockManager.createLocatedBlocks(inode.getBlocks(),
             inode.computeFileSize(false), inode.isUnderConstruction(),
@@ -4820,8 +4820,15 @@ public class FSNamesystem implements Namesystem, FSClusterStats,
    * shutdown FSNamesystem
    */
   void shutdown() {
-    if (mbeanName != null)
+    if (mbeanName != null) {
       MBeans.unregister(mbeanName);
+    }
+    if (dir != null) {
+      dir.shutdown();
+    }
+    if (blockManager != null) {
+      blockManager.shutdown();
+    }
   }
   
 
