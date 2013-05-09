@@ -240,6 +240,44 @@ public class TestNativeIO {
 
   }
 
+  /** Validate access checks on Windows */
+  @Test (timeout = 30000)
+  public void testAccess() throws Exception {
+    if (!Path.WINDOWS) {
+      return;
+    }
+
+    File testFile = new File(TEST_DIR, "testfileaccess");
+    assertTrue(testFile.createNewFile());
+
+    // Validate ACCESS_READ
+    FileUtil.setReadable(testFile, false);
+    assertFalse(NativeIO.Windows.access(testFile.getAbsolutePath(),
+        NativeIO.Windows.AccessRight.ACCESS_READ));
+
+    FileUtil.setReadable(testFile, true);
+    assertTrue(NativeIO.Windows.access(testFile.getAbsolutePath(),
+        NativeIO.Windows.AccessRight.ACCESS_READ));
+
+    // Validate ACCESS_WRITE
+    FileUtil.setWritable(testFile, false);
+    assertFalse(NativeIO.Windows.access(testFile.getAbsolutePath(),
+        NativeIO.Windows.AccessRight.ACCESS_WRITE));
+
+    FileUtil.setWritable(testFile, true);
+    assertTrue(NativeIO.Windows.access(testFile.getAbsolutePath(),
+        NativeIO.Windows.AccessRight.ACCESS_WRITE));
+
+    // Validate ACCESS_EXECUTE
+    FileUtil.setExecutable(testFile, false);
+    assertFalse(NativeIO.Windows.access(testFile.getAbsolutePath(),
+        NativeIO.Windows.AccessRight.ACCESS_EXECUTE));
+
+    FileUtil.setExecutable(testFile, true);
+    assertTrue(NativeIO.Windows.access(testFile.getAbsolutePath(),
+        NativeIO.Windows.AccessRight.ACCESS_EXECUTE));
+  }
+
   @Test (timeout = 30000)
   public void testOpenMissingWithoutCreate() throws Exception {
     if (Path.WINDOWS) {
@@ -446,7 +484,13 @@ public class TestNativeIO {
       NativeIO.renameTo(nonExistentFile, targetFile);
       Assert.fail();
     } catch (NativeIOException e) {
-      Assert.assertEquals(e.getErrno(), Errno.ENOENT);
+      if (Path.WINDOWS) {
+        Assert.assertEquals(
+          String.format("The system cannot find the file specified.%n"),
+          e.getMessage());
+      } else {
+        Assert.assertEquals(Errno.ENOENT, e.getErrno());
+      }
     }
     
     // Test renaming a file to itself.  It should succeed and do nothing.
@@ -465,7 +509,13 @@ public class TestNativeIO {
       NativeIO.renameTo(sourceFile, badTarget);
       Assert.fail();
     } catch (NativeIOException e) {
-      Assert.assertEquals(e.getErrno(), Errno.ENOTDIR);
+      if (Path.WINDOWS) {
+        Assert.assertEquals(
+          String.format("The parameter is incorrect.%n"),
+          e.getMessage());
+      } else {
+        Assert.assertEquals(Errno.ENOTDIR, e.getErrno());
+      }
     }
 
     FileUtils.deleteQuietly(TEST_DIR);

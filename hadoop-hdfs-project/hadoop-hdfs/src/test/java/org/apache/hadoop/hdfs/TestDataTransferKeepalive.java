@@ -35,6 +35,7 @@ import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.MiniDFSCluster.DataNodeProperties;
+import org.apache.hadoop.hdfs.net.Peer;
 import org.apache.hadoop.hdfs.server.datanode.DataNode;
 import org.apache.hadoop.hdfs.server.datanode.DataNodeTestUtils;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeRegistration;
@@ -70,7 +71,7 @@ public class TestDataTransferKeepalive {
       .numDataNodes(1).build();
     fs = cluster.getFileSystem();
     dfsClient = ((DistributedFileSystem)fs).dfs;
-    dfsClient.socketCache.clear();
+    dfsClient.peerCache.clear();
 
     String poolId = cluster.getNamesystem().getBlockPoolId();
     dn = cluster.getDataNodes().get(0);
@@ -93,13 +94,13 @@ public class TestDataTransferKeepalive {
     DFSTestUtil.createFile(fs, TEST_FILE, 1L, (short)1, 0L);
 
     // Clients that write aren't currently re-used.
-    assertEquals(0, dfsClient.socketCache.size());
+    assertEquals(0, dfsClient.peerCache.size());
     assertXceiverCount(0);
 
     // Reads the file, so we should get a
     // cached socket, and should have an xceiver on the other side.
     DFSTestUtil.readFile(fs, TEST_FILE);
-    assertEquals(1, dfsClient.socketCache.size());
+    assertEquals(1, dfsClient.peerCache.size());
     assertXceiverCount(1);
 
     // Sleep for a bit longer than the keepalive timeout
@@ -110,13 +111,13 @@ public class TestDataTransferKeepalive {
     // The socket is still in the cache, because we don't
     // notice that it's closed until we try to read
     // from it again.
-    assertEquals(1, dfsClient.socketCache.size());
+    assertEquals(1, dfsClient.peerCache.size());
     
     // Take it out of the cache - reading should
     // give an EOF.
-    Socket s = dfsClient.socketCache.get(dnAddr).sock;
-    assertNotNull(s);
-    assertEquals(-1, NetUtils.getInputStream(s).read());
+    Peer peer = dfsClient.peerCache.get(dn.getDatanodeId(), false);
+    assertNotNull(peer);
+    assertEquals(-1, peer.getInputStream().read());
   }
 
   /**
@@ -145,7 +146,15 @@ public class TestDataTransferKeepalive {
       stm.read();
       assertXceiverCount(1);
 
-      Thread.sleep(WRITE_TIMEOUT + 1000);
+      // Poll for 0 running xceivers.  Allow up to 5 seconds for some slack.
+      long totalSleepTime = 0;
+      long sleepTime = WRITE_TIMEOUT + 100;
+      while (getXceiverCountWithoutServer() > 0 && totalSleepTime < 5000) {
+        Thread.sleep(sleepTime);
+        totalSleepTime += sleepTime;
+        sleepTime = 100;
+      }
+
       // DN should time out in sendChunks, and this should force
       // the xceiver to exit.
       assertXceiverCount(0);
@@ -175,23 +184,21 @@ public class TestDataTransferKeepalive {
     }
     
     DFSClient client = ((DistributedFileSystem)fs).dfs;
-    assertEquals(5, client.socketCache.size());
+    assertEquals(5, client.peerCache.size());
     
     // Let all the xceivers timeout
     Thread.sleep(1500);
     assertXceiverCount(0);
 
     // Client side still has the sockets cached
-    assertEquals(5, client.socketCache.size());
+    assertEquals(5, client.peerCache.size());
 
     // Reading should not throw an exception.
     DFSTestUtil.readFile(fs, TEST_FILE);
   }
 
   private void assertXceiverCount(int expected) {
-    // Subtract 1, since the DataXceiverServer
-    // counts as one
-    int count = dn.getXceiverCount() - 1;
+    int count = getXceiverCountWithoutServer();
     if (count != expected) {
       ReflectionUtils.printThreadInfo(
           new PrintWriter(System.err),
@@ -199,5 +206,15 @@ public class TestDataTransferKeepalive {
       fail("Expected " + expected + " xceivers, found " +
           count);
     }
+  }
+
+  /**
+   * Returns the datanode's xceiver count, but subtracts 1, since the
+   * DataXceiverServer counts as one.
+   * 
+   * @return int xceiver count, not including DataXceiverServer
+   */
+  private int getXceiverCountWithoutServer() {
+    return dn.getXceiverCount() - 1;
   }
 }

@@ -46,12 +46,13 @@ public class FSSchedulerNode extends SchedulerNode {
   private static final RecordFactory recordFactory = RecordFactoryProvider
       .getRecordFactory(null);
 
-  private Resource availableResource = recordFactory.newRecordInstance(Resource.class);
+  private Resource availableResource;
   private Resource usedResource = recordFactory.newRecordInstance(Resource.class);
 
   private volatile int numContainers;
 
   private RMContainer reservedContainer;
+  private AppSchedulable reservedAppSchedulable;
   
   /* set of containers that are allocated containers */
   private final Map<ContainerId, RMContainer> launchedContainers = 
@@ -61,7 +62,7 @@ public class FSSchedulerNode extends SchedulerNode {
 
   public FSSchedulerNode(RMNode node) {
     this.rmNode = node;
-    this.availableResource.setMemory(node.getTotalCapability().getMemory());
+    this.availableResource = Resources.clone(node.getTotalCapability());
   }
 
   public RMNode getRMNode() {
@@ -221,6 +222,7 @@ public class FSSchedulerNode extends SchedulerNode {
           " on node " + this + " for application " + application);
     }
     this.reservedContainer = reservedContainer;
+    this.reservedAppSchedulable = application.getAppSchedulable();
   }
 
   public synchronized void unreserveResource(
@@ -237,11 +239,15 @@ public class FSSchedulerNode extends SchedulerNode {
           " on node " + this);
     }
     
-    reservedContainer = null;
+    this.reservedContainer = null;
+    this.reservedAppSchedulable = null;
   }
 
   public synchronized RMContainer getReservedContainer() {
     return reservedContainer;
   }
 
+  public synchronized AppSchedulable getReservedAppSchedulable() {
+    return reservedAppSchedulable;
+  }
 }

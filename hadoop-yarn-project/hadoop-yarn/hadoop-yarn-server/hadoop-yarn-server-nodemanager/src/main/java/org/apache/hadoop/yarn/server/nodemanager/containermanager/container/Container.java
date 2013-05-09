@@ -29,7 +29,7 @@ import org.apache.hadoop.yarn.event.EventHandler;
 
 public interface Container extends EventHandler<ContainerEvent> {
 
-  org.apache.hadoop.yarn.api.records.ContainerId getContainerID();
+  org.apache.hadoop.yarn.api.records.Container getContainer();
 
   String getUser();
 
@@ -44,4 +44,5 @@ public interface Container extends EventHandler<ContainerEvent> {
   ContainerStatus cloneAndGetContainerStatus();
 
   String toString();
+
 }

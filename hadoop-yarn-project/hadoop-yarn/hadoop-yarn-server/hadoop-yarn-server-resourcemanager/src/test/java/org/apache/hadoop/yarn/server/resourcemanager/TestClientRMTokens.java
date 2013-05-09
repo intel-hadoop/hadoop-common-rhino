@@ -52,8 +52,8 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.exceptions.YarnRemoteException;
 import org.apache.hadoop.yarn.ipc.YarnRPC;
 import org.apache.hadoop.yarn.security.client.RMDelegationTokenIdentifier;
-import org.apache.hadoop.yarn.server.RMDelegationTokenSecretManager;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.ResourceScheduler;
+import org.apache.hadoop.yarn.server.resourcemanager.security.RMDelegationTokenSecretManager;
 import org.apache.hadoop.yarn.server.security.ApplicationACLsManager;
 import org.apache.hadoop.yarn.util.BuilderUtils;
 import org.apache.hadoop.yarn.util.ProtoUtils;
@@ -72,7 +72,8 @@ public class TestClientRMTokens {
   }
   
   @Test
-  public void testDelegationToken() throws IOException, InterruptedException {
+  public void testDelegationToken() throws IOException, InterruptedException,
+      YarnRemoteException {
     
     final YarnConfiguration conf = new YarnConfiguration();
     conf.set(YarnConfiguration.RM_PRINCIPAL, "testuser/localhost@apache.org");
@@ -338,7 +339,7 @@ public class TestClientRMTokens {
     DelegationToken token = loggedInUser
         .doAs(new PrivilegedExceptionAction<DelegationToken>() {
           @Override
-          public DelegationToken run() throws YarnRemoteException {
+          public DelegationToken run() throws YarnRemoteException, IOException {
             GetDelegationTokenRequest request = Records
                 .newRecord(GetDelegationTokenRequest.class);
             request.setRenewer(renewerString);
@@ -354,7 +355,7 @@ public class TestClientRMTokens {
       throws IOException, InterruptedException {
     long nextExpTime = loggedInUser.doAs(new PrivilegedExceptionAction<Long>() {
       @Override
-      public Long run() throws YarnRemoteException {
+      public Long run() throws YarnRemoteException, IOException {
         RenewDelegationTokenRequest request = Records
             .newRecord(RenewDelegationTokenRequest.class);
         request.setDelegationToken(dToken);
@@ -370,7 +371,7 @@ public class TestClientRMTokens {
       throws IOException, InterruptedException {
     loggedInUser.doAs(new PrivilegedExceptionAction<Void>() {
       @Override
-      public Void run() throws YarnRemoteException {
+      public Void run() throws YarnRemoteException, IOException {
         CancelDelegationTokenRequest request = Records
             .newRecord(CancelDelegationTokenRequest.class);
         request.setDelegationToken(dToken);

@@ -37,7 +37,6 @@ import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.v2.api.records.JobId;
 import org.apache.hadoop.mapreduce.v2.api.records.JobState;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptId;
-import org.apache.hadoop.mapreduce.v2.api.records.TaskAttemptState;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskId;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskState;
 import org.apache.hadoop.mapreduce.v2.api.records.TaskType;
@@ -60,7 +59,6 @@ import org.apache.hadoop.yarn.api.protocolrecords.StopContainerResponse;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ContainerId;
-import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.api.records.ContainerState;
 import org.apache.hadoop.yarn.api.records.ContainerStatus;
 import org.apache.hadoop.yarn.api.records.ContainerToken;
@@ -225,10 +223,6 @@ public class TestContainerLauncher {
 
   @Test
   public void testSlowNM() throws Exception {
-    test();
-  }
-
-  private void test() throws Exception {
 
     conf = new Configuration();
     int maxAttempts = 1;
@@ -383,7 +377,15 @@ public class TestContainerLauncher {
     @Override
     public StartContainerResponse startContainer(StartContainerRequest request)
         throws YarnRemoteException {
-      ContainerLaunchContext container = request.getContainerLaunchContext();
+
+      // Validate that the container is what RM is giving.
+      Assert.assertEquals(MRApp.NM_HOST, request.getContainer().getNodeId()
+        .getHost());
+      Assert.assertEquals(MRApp.NM_PORT, request.getContainer().getNodeId()
+        .getPort());
+      Assert.assertEquals(MRApp.NM_HOST + ":" + MRApp.NM_HTTP_PORT, request
+        .getContainer().getNodeHttpAddress());
+
       StartContainerResponse response = recordFactory
           .newRecordInstance(StartContainerResponse.class);
       status = recordFactory.newRecordInstance(ContainerStatus.class);
@@ -395,7 +397,7 @@ public class TestContainerLauncher {
         throw new UndeclaredThrowableException(e);
             }
       status.setState(ContainerState.RUNNING);
-      status.setContainerId(container.getContainerId());
+      status.setContainerId(request.getContainer().getId());
       status.setExitStatus(0);
       return response;
             }

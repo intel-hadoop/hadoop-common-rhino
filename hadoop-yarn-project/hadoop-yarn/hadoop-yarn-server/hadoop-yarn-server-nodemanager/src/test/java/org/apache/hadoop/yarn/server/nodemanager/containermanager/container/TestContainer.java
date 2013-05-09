@@ -376,7 +376,7 @@ public class TestContainer {
           public boolean matches(Object o) {
             ContainersLauncherEvent evt = (ContainersLauncherEvent) o;
             return evt.getType() == ContainersLauncherEventType.LAUNCH_CONTAINER
-              && wcf.cId == evt.getContainer().getContainerID();
+              && wcf.cId == evt.getContainer().getContainer().getId();
           }
         };
       verify(wc.launcherBus).handle(argThat(matchesLaunchReq));
@@ -525,8 +525,9 @@ public class TestContainer {
     return serviceData;
   }
 
-  private Container newContainer(Dispatcher disp, ContainerLaunchContext ctx) {
-    return new ContainerImpl(conf, disp, ctx, null, metrics);
+  private Container newContainer(Dispatcher disp, ContainerLaunchContext ctx,
+      org.apache.hadoop.yarn.api.records.Container container) {
+    return new ContainerImpl(conf, disp, ctx, container, null, metrics);
   }
   
   @SuppressWarnings("unchecked")
@@ -570,12 +571,14 @@ public class TestContainer {
       this.user = user;
 
       ctxt = mock(ContainerLaunchContext.class);
+      org.apache.hadoop.yarn.api.records.Container mockContainer =
+          mock(org.apache.hadoop.yarn.api.records.Container.class);
       cId = BuilderUtils.newContainerId(appId, 1, timestamp, id);
       when(ctxt.getUser()).thenReturn(this.user);
-      when(ctxt.getContainerId()).thenReturn(cId);
+      when(mockContainer.getId()).thenReturn(cId);
 
       Resource resource = BuilderUtils.newResource(1024, 1);
-      when(ctxt.getResource()).thenReturn(resource);
+      when(mockContainer.getResource()).thenReturn(resource);
 
       if (withLocalRes) {
         Random r = new Random();
@@ -599,7 +602,7 @@ public class TestContainer {
       }
       when(ctxt.getServiceData()).thenReturn(serviceData);
 
-      c = newContainer(dispatcher, ctxt);
+      c = newContainer(dispatcher, ctxt, mockContainer);
       dispatcher.start();
     }
 
@@ -636,7 +639,7 @@ public class TestContainer {
         Path p = new Path(cache, rsrc.getKey());
         localPaths.put(p, Arrays.asList(rsrc.getKey()));
         // rsrc copied to p
-        c.handle(new ContainerResourceLocalizedEvent(c.getContainerID(), 
+        c.handle(new ContainerResourceLocalizedEvent(c.getContainer().getId(),
                  req, p));
       }
       drainDispatcherEvents();
@@ -659,7 +662,8 @@ public class TestContainer {
       LocalResource rsrc = localResources.get(rsrcKey);
       LocalResourceRequest req = new LocalResourceRequest(rsrc);
       Exception e = new Exception("Fake localization error");
-      c.handle(new ContainerResourceFailedEvent(c.getContainerID(), req, e));
+      c.handle(new ContainerResourceFailedEvent(c.getContainer()
+          .getId(), req, e));
       drainDispatcherEvents();
     }
 
@@ -674,7 +678,7 @@ public class TestContainer {
         ++counter;
         LocalResourceRequest req = new LocalResourceRequest(rsrc.getValue());
         Exception e = new Exception("Fake localization error");
-        c.handle(new ContainerResourceFailedEvent(c.getContainerID(), 
+        c.handle(new ContainerResourceFailedEvent(c.getContainer().getId(),
                  req, e));
       }
       drainDispatcherEvents();     

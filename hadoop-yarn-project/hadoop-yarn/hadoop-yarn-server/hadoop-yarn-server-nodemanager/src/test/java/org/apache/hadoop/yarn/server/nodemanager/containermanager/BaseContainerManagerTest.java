@@ -76,15 +76,15 @@ public abstract class BaseContainerManagerTest {
   public BaseContainerManagerTest() throws UnsupportedFileSystemException {
     localFS = FileContext.getLocalFSFileContext();
     localDir =
-        new File("target", this.getClass().getName() + "-localDir")
+        new File("target", this.getClass().getSimpleName() + "-localDir")
             .getAbsoluteFile();
     localLogDir =
-        new File("target", this.getClass().getName() + "-localLogDir")
+        new File("target", this.getClass().getSimpleName() + "-localLogDir")
             .getAbsoluteFile();
     remoteLogDir =
-      new File("target", this.getClass().getName() + "-remoteLogDir")
+      new File("target", this.getClass().getSimpleName() + "-remoteLogDir")
           .getAbsoluteFile();
-    tmpDir = new File("target", this.getClass().getName() + "-tmpDir");
+    tmpDir = new File("target", this.getClass().getSimpleName() + "-tmpDir");
   }
 
   protected static Log LOG = LogFactory
@@ -98,6 +98,7 @@ public abstract class BaseContainerManagerTest {
   protected String user = "nobody";
   protected NodeHealthCheckerService nodeHealthChecker;
   protected LocalDirsHandlerService dirsHandler;
+  protected final long DUMMY_RM_IDENTIFIER = 1234;
 
   protected NodeStatusUpdater nodeStatusUpdater = new NodeStatusUpdaterImpl(
       context, new AsyncDispatcher(), null, metrics) {
@@ -109,6 +110,12 @@ public abstract class BaseContainerManagerTest {
     @Override
     protected void startStatusUpdater() {
       return; // Don't start any updating thread.
+    }
+
+    @Override
+    public long getRMIdentifier() {
+      // There is no real RM registration, simulate and set RMIdentifier
+      return DUMMY_RM_IDENTIFIER;
     }
   };
 
@@ -156,7 +163,13 @@ public abstract class BaseContainerManagerTest {
     dirsHandler = nodeHealthChecker.getDiskHandler();
     containerManager =
         new ContainerManagerImpl(context, exec, delSrvc, nodeStatusUpdater,
-          metrics, new ApplicationACLsManager(conf), dirsHandler);
+          metrics, new ApplicationACLsManager(conf), dirsHandler) {
+          @Override
+          public void setBlockNewContainerRequests(
+              boolean blockNewContainerRequests) {
+            // do nothing
+          }
+        };
     containerManager.init(conf);
   }
 
@@ -172,13 +185,13 @@ public abstract class BaseContainerManagerTest {
 
   public static void waitForContainerState(ContainerManager containerManager,
       ContainerId containerID, ContainerState finalState)
-      throws InterruptedException, YarnRemoteException {
+      throws InterruptedException, YarnRemoteException, IOException {
     waitForContainerState(containerManager, containerID, finalState, 20);
   }
 
   public static void waitForContainerState(ContainerManager containerManager,
           ContainerId containerID, ContainerState finalState, int timeOutMax)
-          throws InterruptedException, YarnRemoteException {
+          throws InterruptedException, YarnRemoteException, IOException {
     GetContainerStatusRequest request =
         recordFactory.newRecordInstance(GetContainerStatusRequest.class);
         request.setContainerId(containerID);

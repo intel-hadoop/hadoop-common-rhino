@@ -30,6 +30,7 @@ import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.api.records.ContainerStatus;
+import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.event.Dispatcher;
 import org.apache.hadoop.yarn.factories.RecordFactory;
 import org.apache.hadoop.yarn.factory.providers.RecordFactoryProvider;
@@ -37,6 +38,7 @@ import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.Cont
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerEvent;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.ContainerState;
 import org.apache.hadoop.yarn.util.BuilderUtils;
+import static org.mockito.Mockito.*;
 
 public class MockContainer implements Container {
 
@@ -47,6 +49,7 @@ public class MockContainer implements Container {
   private final Map<Path, List<String>> resource =
       new HashMap<Path, List<String>>();
   private RecordFactory recordFactory;
+  private org.apache.hadoop.yarn.api.records.Container mockContainer;
 
   public MockContainer(ApplicationAttemptId appAttemptId,
       Dispatcher dispatcher, Configuration conf, String user,
@@ -58,19 +61,15 @@ public class MockContainer implements Container {
         uniqId);
     this.launchContext = recordFactory
         .newRecordInstance(ContainerLaunchContext.class);
-    launchContext.setContainerId(id);
     launchContext.setUser(user);
     this.state = ContainerState.NEW;
 
+    mockContainer = mock(org.apache.hadoop.yarn.api.records.Container.class);
+    when(mockContainer.getId()).thenReturn(id);
   }
 
   public void setState(ContainerState state) {
     this.state = state;
-  }
-
-  @Override
-  public ContainerId getContainerID() {
-    return id;
   }
 
   @Override
@@ -104,7 +103,6 @@ public class MockContainer implements Container {
         .newRecordInstance(ContainerStatus.class);
     containerStatus
         .setState(org.apache.hadoop.yarn.api.records.ContainerState.RUNNING);
-    containerStatus.setContainerId(this.launchContext.getContainerId());
     containerStatus.setDiagnostics("testing");
     containerStatus.setExitStatus(0);
     return containerStatus;
@@ -119,4 +117,8 @@ public class MockContainer implements Container {
   public void handle(ContainerEvent event) {
   }
 
+  @Override
+  public org.apache.hadoop.yarn.api.records.Container getContainer() {
+    return this.mockContainer;
+  }
 }

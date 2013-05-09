@@ -226,7 +226,6 @@ ConvertToLongPathExit:
   if (dwErrorCode != ERROR_SUCCESS)
   {
     LocalFree(newPathValue);
-    *newPath = NULL;
   }
 
   return dwErrorCode;
@@ -398,7 +397,7 @@ DWORD JunctionPointCheck(__in LPCWSTR pathName, __out PBOOL res)
 // Notes:
 //	Caller needs to destroy the memory of Sid by calling LocalFree()
 //
-DWORD GetSidFromAcctNameW(LPCWSTR acctName, PSID *ppSid)
+DWORD GetSidFromAcctNameW(__in PCWSTR acctName, __out PSID *ppSid)
 {
   DWORD dwSidSize = 0;
   DWORD cchDomainName = 0;
@@ -545,7 +544,7 @@ static DWORD GetAccess(AUTHZ_CLIENT_CONTEXT_HANDLE hAuthzClient,
   {
     return GetLastError();
   }
-  *pAccessRights = (*(PACCESS_MASK)(AccessReply.GrantedAccessMask));
+  *pAccessRights = (*(const ACCESS_MASK *)(AccessReply.GrantedAccessMask));
   return ERROR_SUCCESS;
 }
 
@@ -568,7 +567,7 @@ static DWORD GetEffectiveRightsForSid(PSECURITY_DESCRIPTOR psd,
   PSID pSid,
   PACCESS_MASK pAccessRights)
 {
-  AUTHZ_RESOURCE_MANAGER_HANDLE hManager;
+  AUTHZ_RESOURCE_MANAGER_HANDLE hManager = NULL;
   LUID unusedId = { 0 };
   AUTHZ_CLIENT_CONTEXT_HANDLE hAuthzClientContext = NULL;
   DWORD dwRtnCode = ERROR_SUCCESS;
@@ -582,6 +581,10 @@ static DWORD GetEffectiveRightsForSid(PSECURITY_DESCRIPTOR psd,
     return GetLastError();
   }
 
+  // Pass AUTHZ_SKIP_TOKEN_GROUPS to the function to avoid querying user group
+  // information for access check. This allows us to model POSIX permissions
+  // on Windows, where a user can have less permissions than a group it
+  // belongs to.
   if(!AuthzInitializeContextFromSid(AUTHZ_SKIP_TOKEN_GROUPS,
     pSid, hManager, NULL, unusedId, NULL, &hAuthzClientContext))
   {
@@ -595,14 +598,113 @@ static DWORD GetEffectiveRightsForSid(PSECURITY_DESCRIPTOR psd,
     ret = dwRtnCode;
     goto GetEffectiveRightsForSidEnd;
   }
-  if (!AuthzFreeContext(hAuthzClientContext))
-  {
-    ret = GetLastError();
-    goto GetEffectiveRightsForSidEnd;
-  }
 
 GetEffectiveRightsForSidEnd:
+  if (hManager != NULL)
+  {
+    (void)AuthzFreeResourceManager(hManager);
+  }
+  if (hAuthzClientContext != NULL)
+  {
+    (void)AuthzFreeContext(hAuthzClientContext);
+  }
+
   return ret;
+}
+
+//----------------------------------------------------------------------------
+// Function: CheckAccessForCurrentUser
+//
+// Description:
+//   Checks if the current process has the requested access rights on the given
+//   path. Based on the following MSDN article:
+//   http://msdn.microsoft.com/en-us/library/windows/desktop/ff394771(v=vs.85).aspx
+//
+// Returns:
+//   ERROR_SUCCESS: on success
+//
+DWORD CheckAccessForCurrentUser(
+  __in PCWSTR pathName,
+  __in ACCESS_MASK requestedAccess,
+  __out BOOL *allowed)
+{
+  DWORD dwRtnCode = ERROR_SUCCESS;
+
+  LPWSTR longPathName = NULL;
+  HANDLE hProcessToken = NULL;
+  PSECURITY_DESCRIPTOR pSd = NULL;
+
+  AUTHZ_RESOURCE_MANAGER_HANDLE hManager = NULL;
+  AUTHZ_CLIENT_CONTEXT_HANDLE hAuthzClientContext = NULL;
+  LUID Luid = {0, 0};
+
+  ACCESS_MASK currentUserAccessRights = 0;
+
+  // Prepend the long path prefix if needed
+  dwRtnCode = ConvertToLongPath(pathName, &longPathName);
+  if (dwRtnCode != ERROR_SUCCESS)
+  {
+    goto CheckAccessEnd;
+  }
+
+  // Get SD of the given path. OWNER and DACL security info must be
+  // requested, otherwise, AuthzAccessCheck fails with invalid parameter
+  // error.
+  dwRtnCode = GetNamedSecurityInfo(longPathName, SE_FILE_OBJECT,
+    OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION |
+    DACL_SECURITY_INFORMATION,
+    NULL, NULL, NULL, NULL, &pSd);
+  if (dwRtnCode != ERROR_SUCCESS)
+  {
+    goto CheckAccessEnd;
+  }
+
+  // Get current process token
+  if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hProcessToken))
+  {
+    dwRtnCode = GetLastError();
+    goto CheckAccessEnd;
+  }
+
+  if (!AuthzInitializeResourceManager(AUTHZ_RM_FLAG_NO_AUDIT, NULL, NULL,
+    NULL, NULL, &hManager))
+  {
+    dwRtnCode = GetLastError();
+    goto CheckAccessEnd;
+  }
+
+  if(!AuthzInitializeContextFromToken(0, hProcessToken, hManager, NULL,
+    Luid, NULL, &hAuthzClientContext))
+  {
+    dwRtnCode = GetLastError();
+    goto CheckAccessEnd;
+  }
+
+  dwRtnCode = GetAccess(hAuthzClientContext, pSd, &currentUserAccessRights);
+  if (dwRtnCode != ERROR_SUCCESS)
+  {
+    goto CheckAccessEnd;
+  }
+
+  *allowed = ((currentUserAccessRights & requestedAccess) == requestedAccess);
+
+CheckAccessEnd:
+  LocalFree(longPathName);
+  LocalFree(pSd);
+  if (hProcessToken != NULL)
+  {
+    CloseHandle(hProcessToken);
+  }
+  if (hManager != NULL)
+  {
+    (void)AuthzFreeResourceManager(hManager);
+  }
+  if (hAuthzClientContext != NULL)
+  {
+    (void)AuthzFreeContext(hAuthzClientContext);
+  }
+
+  return dwRtnCode;
 }
 
 //----------------------------------------------------------------------------
@@ -1088,6 +1190,7 @@ DWORD ChangeFileModeByMask(__in LPCWSTR path, INT mode)
   DWORD revision = 0;
 
   PSECURITY_DESCRIPTOR pAbsSD = NULL;
+  PSECURITY_DESCRIPTOR pNonNullSD = NULL;
   PACL pAbsDacl = NULL;
   PACL pAbsSacl = NULL;
   PSID pAbsOwner = NULL;
@@ -1200,7 +1303,8 @@ DWORD ChangeFileModeByMask(__in LPCWSTR path, INT mode)
   // present in the security descriptor, the DACL is replaced. The security
   // descriptor is then used to set the security of a file or directory.
   //
-  if (!SetSecurityDescriptorDacl(pAbsSD, TRUE, pNewDACL, FALSE))
+  pNonNullSD = (pAbsSD != NULL) ? pAbsSD : pSD;
+  if (!SetSecurityDescriptorDacl(pNonNullSD, TRUE, pNewDACL, FALSE))
   {
     ret = GetLastError();
     goto ChangeFileModeByMaskEnd;
@@ -1220,13 +1324,14 @@ DWORD ChangeFileModeByMask(__in LPCWSTR path, INT mode)
   // its parent, and the child objects will not lose their inherited permissions
   // from the current object.
   //
-  if (!SetFileSecurity(longPathName, DACL_SECURITY_INFORMATION, pAbsSD))
+  if (!SetFileSecurity(longPathName, DACL_SECURITY_INFORMATION, pNonNullSD))
   {
     ret = GetLastError();
     goto ChangeFileModeByMaskEnd;
   }
 
 ChangeFileModeByMaskEnd:
+  pNonNullSD = NULL;
   LocalFree(longPathName);
   LocalFree(pSD);
   LocalFree(pNewDACL);
@@ -1252,7 +1357,7 @@ ChangeFileModeByMaskEnd:
 // Notes:
 //	Caller needs to destroy the memory of account name by calling LocalFree()
 //
-DWORD GetAccntNameFromSid(PSID pSid, LPWSTR *ppAcctName)
+DWORD GetAccntNameFromSid(__in PSID pSid, __out PWSTR *ppAcctName)
 {
   LPWSTR lpName = NULL;
   DWORD cchName = 0;

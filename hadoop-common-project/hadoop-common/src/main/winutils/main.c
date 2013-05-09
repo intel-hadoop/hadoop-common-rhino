@@ -19,7 +19,7 @@
 
 static void Usage(LPCWSTR program);
 
-int wmain(int argc, wchar_t* argv[])
+int wmain(__in int argc, __in_ecount(argc) wchar_t* argv[])
 {
   LPCWSTR cmd = NULL;
 
@@ -54,6 +54,10 @@ int wmain(int argc, wchar_t* argv[])
   else if (wcscmp(L"symlink", cmd) == 0)
   {
     return Symlink(argc - 1, argv + 1);
+  }
+  else if (wcscmp(L"readlink", cmd) == 0)
+  {
+    return Readlink(argc - 1, argv + 1);
   }
   else if (wcscmp(L"task", cmd) == 0)
   {
@@ -103,6 +107,10 @@ The available commands and their usages are:\n\n", program);
  
   fwprintf(stdout, L"%-10s%s\n\n", L"symlink", L"Create a symbolic link.");
   SymlinkUsage();
+  fwprintf(stdout, L"\n\n");
+
+  fwprintf(stdout, L"%-10s%s\n\n", L"readlink", L"Print the target of a symbolic link.");
+  ReadlinkUsage();
   fwprintf(stdout, L"\n\n");
 
   fwprintf(stdout, L"%-15s%s\n\n", L"systeminfo", L"System information.");

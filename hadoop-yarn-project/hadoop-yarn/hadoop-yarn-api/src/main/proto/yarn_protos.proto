@@ -68,16 +68,18 @@ message ContainerProto {
   optional ResourceProto resource = 4;
   optional PriorityProto priority = 5;
   optional hadoop.common.TokenProto container_token = 6;
+  optional int64 rm_identifier = 7;
 }
 
 enum YarnApplicationStateProto {
   NEW = 1;
-  SUBMITTED = 2;
-  RUNNING = 3;
-  FINISHED = 4;
-  FAILED = 5;
-  KILLED = 6;
-  ACCEPTED = 7;
+  NEW_SAVING = 2;
+  SUBMITTED = 3;
+  ACCEPTED = 4;
+  RUNNING = 5;
+  FINISHED = 6;
+  FAILED = 7;
+  KILLED = 8;
 }
 
 enum FinalApplicationStatusProto {
@@ -161,6 +163,7 @@ message ApplicationReportProto {
   optional ApplicationResourceUsageReportProto app_resource_Usage = 16;
   optional string originalTrackingUrl = 17;
   optional ApplicationAttemptIdProto currentApplicationAttemptId = 18;
+  optional float progress = 19;
 }
 
 enum NodeStateProto {
@@ -211,13 +214,13 @@ message ResourceRequestProto {
 message ApplicationSubmissionContextProto {
   optional ApplicationIdProto application_id = 1;
   optional string application_name = 2 [default = "N/A"];
-  optional string user = 3;
-  optional string queue = 4 [default = "default"];
-  optional PriorityProto priority = 5;
-  optional ContainerLaunchContextProto am_container_spec = 6;
-  optional bool cancel_tokens_when_complete = 7 [default = true];
-  optional bool unmanaged_am = 8 [default = false];
-  optional int32 maxAppAttempts = 9 [default = 0];
+  optional string queue = 3 [default = "default"];
+  optional PriorityProto priority = 4;
+  optional ContainerLaunchContextProto am_container_spec = 5;
+  optional bool cancel_tokens_when_complete = 6 [default = true];
+  optional bool unmanaged_am = 7 [default = false];
+  optional int32 maxAppAttempts = 8 [default = 0];
+  optional ResourceProto resource = 9;
 }
 
 enum ApplicationAccessTypeProto {
@@ -264,15 +267,13 @@ message QueueUserACLInfoProto {
 ////////////////////////////////////////////////////////////////////////
 
 message ContainerLaunchContextProto {
-  optional ContainerIdProto container_id = 1;
-  optional string user = 2;
-  optional ResourceProto resource = 3;
-  repeated StringLocalResourceMapProto localResources = 4;
-  optional bytes container_tokens = 5;
-  repeated StringBytesMapProto service_data = 6;
-  repeated StringStringMapProto environment = 7;
-  repeated string command = 8;
-  repeated ApplicationACLMapProto application_ACLs = 9;
+  optional string user = 1;
+  repeated StringLocalResourceMapProto localResources = 2;
+  optional bytes container_tokens = 3;
+  repeated StringBytesMapProto service_data = 4;
+  repeated StringStringMapProto environment = 5;
+  repeated string command = 6;
+  repeated ApplicationACLMapProto application_ACLs = 7;
 }
 
 message ContainerStatusProto {
@@ -282,7 +283,12 @@ message ContainerStatusProto {
   optional int32 exit_status = 4 [default = -1000];
 }
 
-
+enum ContainerExitStatusProto {
+  SUCCESS = 0;
+  INVALID = -1000;
+  ABORTED = -100;
+  DISKS_FAILED = -101;
+}
 
 ////////////////////////////////////////////////////////////////////////
 ////// From common//////////////////////////////////////////////////////
@@ -305,17 +311,4 @@ message StringStringMapProto {
 message StringBytesMapProto {
   optional string key = 1;
   optional bytes value = 2;
-}
-
-////////////////////////////////////////////////////////////////////////
-////// From recovery////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////
-message ApplicationStateDataProto {
-  optional int64 submit_time = 1;
-  optional ApplicationSubmissionContextProto application_submission_context = 2;
-}
-
-message ApplicationAttemptStateDataProto {
-  optional ApplicationAttemptIdProto attemptId = 1;
-  optional ContainerProto master_container = 2;
 }

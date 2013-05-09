@@ -46,6 +46,7 @@ import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.ResourceRequest;
+import org.apache.hadoop.yarn.exceptions.YarnRemoteException;
 import org.apache.hadoop.yarn.factories.RecordFactory;
 import org.apache.hadoop.yarn.factory.providers.RecordFactoryProvider;
 import org.apache.hadoop.yarn.server.resourcemanager.Task.State;
@@ -127,10 +128,10 @@ public class Application {
     return used;
   }
   
-  public synchronized void submit() throws IOException {
+  public synchronized void submit() throws IOException, YarnRemoteException {
     ApplicationSubmissionContext context = recordFactory.newRecordInstance(ApplicationSubmissionContext.class);
     context.setApplicationId(this.applicationId);
-    context.setUser(this.user);
+    context.getAMContainerSpec().setUser(this.user);
     context.setQueue(this.queue);
     SubmitApplicationRequest request = recordFactory
         .newRecordInstance(SubmitApplicationRequest.class);
@@ -201,7 +202,8 @@ public class Application {
     addResourceRequest(priority, requests, ResourceRequest.ANY, capability);
   }
   
-  public synchronized void finishTask(Task task) throws IOException {
+  public synchronized void finishTask(Task task) throws IOException,
+      YarnRemoteException {
     Set<Task> tasks = this.tasks.get(task.getPriority());
     if (!tasks.remove(task)) {
       throw new IllegalStateException(
@@ -288,7 +290,7 @@ public class Application {
   }
   
   public synchronized void assign(List<Container> containers) 
-  throws IOException {
+  throws IOException, YarnRemoteException {
     
     int numContainers = containers.size();
     // Schedule in priority order
@@ -307,12 +309,12 @@ public class Application {
         assignedContainers + "/" + numContainers);
   }
   
-  public synchronized void schedule() throws IOException {
+  public synchronized void schedule() throws IOException, YarnRemoteException {
     assign(getResources());
   }
   
   private synchronized void assign(Priority priority, NodeType type, 
-      List<Container> containers) throws IOException {
+      List<Container> containers) throws IOException, YarnRemoteException {
     for (Iterator<Container> i=containers.iterator(); i.hasNext();) {
       Container container = i.next();
       String host = container.getNodeId().toString();
@@ -340,7 +342,8 @@ public class Application {
 
             // Launch the container
             StartContainerRequest startRequest = recordFactory.newRecordInstance(StartContainerRequest.class);
-            startRequest.setContainerLaunchContext(createCLC(container));
+            startRequest.setContainerLaunchContext(createCLC());
+            startRequest.setContainer(container);
             nodeManager.startContainer(startRequest);
             break;
           }
@@ -396,11 +399,9 @@ public class Application {
     }
   }
 
-  private ContainerLaunchContext createCLC(Container container) {
+  private ContainerLaunchContext createCLC() {
     ContainerLaunchContext clc = recordFactory.newRecordInstance(ContainerLaunchContext.class);
-    clc.setContainerId(container.getId());
     clc.setUser(this.user);
-    clc.setResource(container.getResource());
     return clc;
   }
 }

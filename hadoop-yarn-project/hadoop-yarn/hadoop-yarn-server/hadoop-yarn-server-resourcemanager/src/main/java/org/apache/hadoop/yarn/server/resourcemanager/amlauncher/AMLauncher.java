@@ -34,7 +34,6 @@ import org.apache.hadoop.io.DataInputByteBuffer;
 import org.apache.hadoop.io.DataOutputBuffer;
 import org.apache.hadoop.net.NetUtils;
 import org.apache.hadoop.security.Credentials;
-import org.apache.hadoop.security.SecurityUtil;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.util.StringUtils;
@@ -48,8 +47,8 @@ import org.apache.hadoop.yarn.api.records.Container;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.api.records.NodeId;
-import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.event.EventHandler;
+import org.apache.hadoop.yarn.exceptions.YarnRemoteException;
 import org.apache.hadoop.yarn.factories.RecordFactory;
 import org.apache.hadoop.yarn.factory.providers.RecordFactoryProvider;
 import org.apache.hadoop.yarn.ipc.YarnRPC;
@@ -77,6 +76,7 @@ public class AMLauncher implements Runnable {
       RecordFactoryProvider.getRecordFactory(null);
   private final AMLauncherEventType eventType;
   private final RMContext rmContext;
+  private final Container masterContainer;
   
   @SuppressWarnings("rawtypes")
   private final EventHandler handler;
@@ -88,34 +88,36 @@ public class AMLauncher implements Runnable {
     this.eventType = eventType;
     this.rmContext = rmContext;
     this.handler = rmContext.getDispatcher().getEventHandler();
+    this.masterContainer = application.getMasterContainer();
   }
   
   private void connect() throws IOException {
-    ContainerId masterContainerID = application.getMasterContainer().getId();
+    ContainerId masterContainerID = masterContainer.getId();
     
     containerMgrProxy = getContainerMgrProxy(masterContainerID);
   }
   
-  private void launch() throws IOException {
+  private void launch() throws IOException, YarnRemoteException {
     connect();
-    ContainerId masterContainerID = application.getMasterContainer().getId();
+    ContainerId masterContainerID = masterContainer.getId();
     ApplicationSubmissionContext applicationContext =
       application.getSubmissionContext();
-    LOG.info("Setting up container " + application.getMasterContainer() 
+    LOG.info("Setting up container " + masterContainer
         + " for AM " + application.getAppAttemptId());  
     ContainerLaunchContext launchContext =
         createAMContainerLaunchContext(applicationContext, masterContainerID);
     StartContainerRequest request = 
         recordFactory.newRecordInstance(StartContainerRequest.class);
     request.setContainerLaunchContext(launchContext);
+    request.setContainer(masterContainer);
     containerMgrProxy.startContainer(request);
-    LOG.info("Done launching container " + application.getMasterContainer() 
+    LOG.info("Done launching container " + masterContainer
         + " for AM " + application.getAppAttemptId());
   }
   
-  private void cleanup() throws IOException {
+  private void cleanup() throws IOException, YarnRemoteException {
     connect();
-    ContainerId containerId = application.getMasterContainer().getId();
+    ContainerId containerId = masterContainer.getId();
     StopContainerRequest stopRequest = 
         recordFactory.newRecordInstance(StopContainerRequest.class);
     stopRequest.setContainerId(containerId);
@@ -126,9 +128,7 @@ public class AMLauncher implements Runnable {
   protected ContainerManager getContainerMgrProxy(
       final ContainerId containerId) {
 
-    Container container = application.getMasterContainer();
-
-    final NodeId node = container.getNodeId();
+    final NodeId node = masterContainer.getNodeId();
     final InetSocketAddress containerManagerBindAddress =
         NetUtils.createSocketAddrForHost(node.getHost(), node.getPort());
 
@@ -138,8 +138,8 @@ public class AMLauncher implements Runnable {
         .createRemoteUser(containerId.toString());
     if (UserGroupInformation.isSecurityEnabled()) {
       Token<ContainerTokenIdentifier> token =
-          ProtoUtils.convertFromProtoFormat(container.getContainerToken(),
-                                            containerManagerBindAddress);
+          ProtoUtils.convertFromProtoFormat(masterContainer
+              .getContainerToken(), containerManagerBindAddress);
       currentUser.addToken(token);
     }
     return currentUser.doAs(new PrivilegedAction<ContainerManager>() {
@@ -165,31 +165,19 @@ public class AMLauncher implements Runnable {
             new String[0])));
     
     // Finalize the container
-    container.setContainerId(containerID);
-    container.setUser(applicationMasterContext.getUser());
-    setupTokensAndEnv(container);
+    container.setUser(applicationMasterContext.getAMContainerSpec().getUser());
+    setupTokensAndEnv(container, containerID);
     
     return container;
   }
 
   private void setupTokensAndEnv(
-      ContainerLaunchContext container)
+      ContainerLaunchContext container, ContainerId containerID)
       throws IOException {
     Map<String, String> environment = container.getEnvironment();
-
     environment.put(ApplicationConstants.APPLICATION_WEB_PROXY_BASE_ENV,
         application.getWebProxyBase());
-    // Set the AppAttemptId, containerId, NMHTTPAdress, AppSubmitTime to be
-    // consumable by the AM.
-    environment.put(ApplicationConstants.AM_CONTAINER_ID_ENV, container
-        .getContainerId().toString());
-    environment.put(ApplicationConstants.NM_HOST_ENV, application
-        .getMasterContainer().getNodeId().getHost());
-    environment.put(ApplicationConstants.NM_PORT_ENV,
-        String.valueOf(application.getMasterContainer().getNodeId().getPort()));
-    String parts[] =
-        application.getMasterContainer().getNodeHttpAddress().split(":");
-    environment.put(ApplicationConstants.NM_HTTP_PORT_ENV, parts[1]);
+    // Set AppSubmitTime and MaxAppAttempts to be consumable by the AM.
     ApplicationId applicationId =
         application.getAppAttemptId().getApplicationId();
     environment.put(
@@ -213,30 +201,16 @@ public class AMLauncher implements Runnable {
         credentials.readTokenStorageStream(dibb);
       }
 
-      ApplicationTokenIdentifier id = new ApplicationTokenIdentifier(
-          application.getAppAttemptId());
-      Token<ApplicationTokenIdentifier> token =
-          new Token<ApplicationTokenIdentifier>(id,
-              this.rmContext.getApplicationTokenSecretManager());
-      InetSocketAddress serviceAddr = conf.getSocketAddr(
-          YarnConfiguration.RM_SCHEDULER_ADDRESS,
-          YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS,
-          YarnConfiguration.DEFAULT_RM_SCHEDULER_PORT);
-      // normally the client should set the service after acquiring the token,
-      // but this token is directly provided to the tasks
-      SecurityUtil.setTokenService(token, serviceAddr);
-      String appMasterTokenEncoded = token.encodeToUrlString();
-      LOG.debug("Putting appMaster token in env : " + token);
-      environment.put(
-          ApplicationConstants.APPLICATION_MASTER_TOKEN_ENV_NAME,
-          appMasterTokenEncoded);
-
-      // Add the RM token
-      credentials.addToken(token.getService(), token);
+      // Add application token
+      Token<ApplicationTokenIdentifier> applicationToken =
+          application.getApplicationToken();
+      if(applicationToken != null) {
+        credentials.addToken(applicationToken.getService(), applicationToken);
+      }
       DataOutputBuffer dob = new DataOutputBuffer();
       credentials.writeTokenStorageToStream(dob);
-      container.setContainerTokens(
-          ByteBuffer.wrap(dob.getData(), 0, dob.getLength()));
+      container.setContainerTokens(ByteBuffer.wrap(dob.getData(), 0,
+        dob.getLength()));
 
       SecretKey clientSecretKey =
           this.rmContext.getClientToAMTokenSecretManager().getMasterKey(
@@ -272,6 +246,8 @@ public class AMLauncher implements Runnable {
         cleanup();
       } catch(IOException ie) {
         LOG.info("Error cleaning master ", ie);
+      } catch (YarnRemoteException e) {
+        LOG.info("Error cleaning master ", e);
       }
       break;
     default:

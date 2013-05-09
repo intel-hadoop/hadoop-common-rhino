@@ -422,6 +422,11 @@ public class TestPipelinesFailover {
     // Disable permissions so that another user can recover the lease.
     harness.conf.setBoolean(
         DFSConfigKeys.DFS_PERMISSIONS_ENABLED_KEY, false);
+    // This test triggers rapid NN failovers.  The client retry policy uses an
+    // exponential backoff.  This can quickly lead to long sleep times and even
+    // timeout the whole test.  Cap the sleep time at 1s to prevent this.
+    harness.conf.setInt(DFSConfigKeys.DFS_CLIENT_FAILOVER_SLEEPTIME_MAX_KEY,
+      1000);
 
     final MiniDFSCluster cluster = harness.startCluster();
     try {
@@ -516,9 +521,17 @@ public class TestPipelinesFailover {
         storedBlock instanceof BlockInfoUnderConstruction);
     BlockInfoUnderConstruction ucBlock =
       (BlockInfoUnderConstruction)storedBlock;
-    // We expect that the first indexed replica will be the one
-    // to be in charge of the synchronization / recovery protocol.
-    DatanodeDescriptor expectedPrimary = ucBlock.getExpectedLocations()[0];
+    // We expect that the replica with the most recent heart beat will be
+    // the one to be in charge of the synchronization / recovery protocol.
+    DatanodeDescriptor[] datanodes = ucBlock.getExpectedLocations();
+    DatanodeDescriptor expectedPrimary = datanodes[0];
+    long mostRecentLastUpdate = expectedPrimary.getLastUpdate();
+    for (int i = 1; i < datanodes.length; i++) {
+      if (datanodes[i].getLastUpdate() > mostRecentLastUpdate) {
+        expectedPrimary = datanodes[i];
+        mostRecentLastUpdate = expectedPrimary.getLastUpdate();
+      }
+    }
     return expectedPrimary;
   }
 
@@ -537,11 +550,10 @@ public class TestPipelinesFailover {
   }
   
   /**
-   * Try to cover the lease on the given file for up to 30
-   * seconds.
+   * Try to recover the lease on the given file for up to 60 seconds.
    * @param fsOtherUser the filesystem to use for the recoverLease call
    * @param testPath the path on which to run lease recovery
-   * @throws TimeoutException if lease recover does not succeed within 30
+   * @throws TimeoutException if lease recover does not succeed within 60
    * seconds
    * @throws InterruptedException if the thread is interrupted
    */
@@ -564,7 +576,7 @@ public class TestPipelinesFailover {
           }
           return success;
         }
-      }, 1000, 30000);
+      }, 1000, 60000);
     } catch (TimeoutException e) {
       throw new TimeoutException("Timed out recovering lease for " +
           testPath);

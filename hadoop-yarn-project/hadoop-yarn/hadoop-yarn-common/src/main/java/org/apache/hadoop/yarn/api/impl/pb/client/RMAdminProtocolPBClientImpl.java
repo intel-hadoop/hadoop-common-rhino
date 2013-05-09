@@ -53,7 +53,7 @@ import org.apache.hadoop.yarn.api.protocolrecords.impl.pb.RefreshSuperUserGroups
 import org.apache.hadoop.yarn.api.protocolrecords.impl.pb.RefreshUserToGroupsMappingsRequestPBImpl;
 import org.apache.hadoop.yarn.api.protocolrecords.impl.pb.RefreshUserToGroupsMappingsResponsePBImpl;
 import org.apache.hadoop.yarn.exceptions.YarnRemoteException;
-import org.apache.hadoop.yarn.exceptions.impl.pb.YarnRemoteExceptionPBImpl;
+import org.apache.hadoop.yarn.ipc.RPCUtil;
 import org.apache.hadoop.yarn.proto.YarnServerResourceManagerServiceProtos.GetGroupsForUserRequestProto;
 import org.apache.hadoop.yarn.proto.YarnServerResourceManagerServiceProtos.GetGroupsForUserResponseProto;
 import org.apache.hadoop.yarn.proto.YarnServerResourceManagerServiceProtos.RefreshAdminAclsRequestProto;
@@ -87,80 +87,82 @@ public class RMAdminProtocolPBClientImpl implements RMAdminProtocol, Closeable {
 
   @Override
   public RefreshQueuesResponse refreshQueues(RefreshQueuesRequest request)
-      throws YarnRemoteException {
+      throws YarnRemoteException, IOException {
     RefreshQueuesRequestProto requestProto = 
       ((RefreshQueuesRequestPBImpl)request).getProto();
     try {
       return new RefreshQueuesResponsePBImpl(
           proxy.refreshQueues(null, requestProto));
     } catch (ServiceException e) {
-      throw YarnRemoteExceptionPBImpl.unwrapAndThrowException(e);
+      throw RPCUtil.unwrapAndThrowException(e);
     }
   }
 
   @Override
   public RefreshNodesResponse refreshNodes(RefreshNodesRequest request)
-  throws YarnRemoteException {
+  throws YarnRemoteException, IOException {
     RefreshNodesRequestProto requestProto = 
       ((RefreshNodesRequestPBImpl)request).getProto();
     try {
       return new RefreshNodesResponsePBImpl(
           proxy.refreshNodes(null, requestProto));
     } catch (ServiceException e) {
-      throw YarnRemoteExceptionPBImpl.unwrapAndThrowException(e);
+      throw RPCUtil.unwrapAndThrowException(e);
     }
   }
 
   @Override
   public RefreshSuperUserGroupsConfigurationResponse refreshSuperUserGroupsConfiguration(
       RefreshSuperUserGroupsConfigurationRequest request)
-      throws YarnRemoteException {
+      throws YarnRemoteException, IOException {
     RefreshSuperUserGroupsConfigurationRequestProto requestProto = 
       ((RefreshSuperUserGroupsConfigurationRequestPBImpl)request).getProto();
     try {
       return new RefreshSuperUserGroupsConfigurationResponsePBImpl(
           proxy.refreshSuperUserGroupsConfiguration(null, requestProto));
     } catch (ServiceException e) {
-      throw YarnRemoteExceptionPBImpl.unwrapAndThrowException(e);
+      throw RPCUtil.unwrapAndThrowException(e);
     }
   }
 
   @Override
   public RefreshUserToGroupsMappingsResponse refreshUserToGroupsMappings(
-      RefreshUserToGroupsMappingsRequest request) throws YarnRemoteException {
+      RefreshUserToGroupsMappingsRequest request) throws YarnRemoteException,
+      IOException {
     RefreshUserToGroupsMappingsRequestProto requestProto = 
       ((RefreshUserToGroupsMappingsRequestPBImpl)request).getProto();
     try {
       return new RefreshUserToGroupsMappingsResponsePBImpl(
           proxy.refreshUserToGroupsMappings(null, requestProto));
     } catch (ServiceException e) {
-      throw YarnRemoteExceptionPBImpl.unwrapAndThrowException(e);
+      throw RPCUtil.unwrapAndThrowException(e);
     }
   }
 
   @Override
   public RefreshAdminAclsResponse refreshAdminAcls(
-      RefreshAdminAclsRequest request) throws YarnRemoteException {
+      RefreshAdminAclsRequest request) throws YarnRemoteException, IOException {
     RefreshAdminAclsRequestProto requestProto = 
       ((RefreshAdminAclsRequestPBImpl)request).getProto();
     try {
       return new RefreshAdminAclsResponsePBImpl(
           proxy.refreshAdminAcls(null, requestProto));
     } catch (ServiceException e) {
-      throw YarnRemoteExceptionPBImpl.unwrapAndThrowException(e);
+      throw RPCUtil.unwrapAndThrowException(e);
     }
   }
 
   @Override
   public RefreshServiceAclsResponse refreshServiceAcls(
-      RefreshServiceAclsRequest request) throws YarnRemoteException {
+      RefreshServiceAclsRequest request) throws YarnRemoteException,
+      IOException {
     RefreshServiceAclsRequestProto requestProto = 
         ((RefreshServiceAclsRequestPBImpl)request).getProto();
     try {
       return new RefreshServiceAclsResponsePBImpl(proxy.refreshServiceAcls(
           null, requestProto));
     } catch (ServiceException e) {
-      throw YarnRemoteExceptionPBImpl.unwrapAndThrowException(e);
+      throw RPCUtil.unwrapAndThrowException(e);
     }
   }
 

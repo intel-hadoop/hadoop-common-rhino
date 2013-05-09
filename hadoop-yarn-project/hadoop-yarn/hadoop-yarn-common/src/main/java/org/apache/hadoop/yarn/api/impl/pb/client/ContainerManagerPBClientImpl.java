@@ -43,7 +43,7 @@ import org.apache.hadoop.yarn.api.protocolrecords.impl.pb.StopContainerRequestPB
 import org.apache.hadoop.yarn.api.protocolrecords.impl.pb.StopContainerResponsePBImpl;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.exceptions.YarnRemoteException;
-import org.apache.hadoop.yarn.exceptions.impl.pb.YarnRemoteExceptionPBImpl;
+import org.apache.hadoop.yarn.ipc.RPCUtil;
 import org.apache.hadoop.yarn.proto.YarnServiceProtos.GetContainerStatusRequestProto;
 import org.apache.hadoop.yarn.proto.YarnServiceProtos.StartContainerRequestProto;
 import org.apache.hadoop.yarn.proto.YarnServiceProtos.StopContainerRequestProto;
@@ -86,40 +86,41 @@ public class ContainerManagerPBClientImpl implements ContainerManager,
 
   @Override
   public GetContainerStatusResponse getContainerStatus(
-      GetContainerStatusRequest request) throws YarnRemoteException {
+      GetContainerStatusRequest request) throws YarnRemoteException,
+      IOException {
     GetContainerStatusRequestProto requestProto =
         ((GetContainerStatusRequestPBImpl) request).getProto();
     try {
       return new GetContainerStatusResponsePBImpl(proxy.getContainerStatus(
         null, requestProto));
     } catch (ServiceException e) {
-      throw YarnRemoteExceptionPBImpl.unwrapAndThrowException(e);
+      throw RPCUtil.unwrapAndThrowException(e);
     }
   }
 
   @Override
   public StartContainerResponse startContainer(StartContainerRequest request)
-      throws YarnRemoteException {
+      throws YarnRemoteException, IOException {
     StartContainerRequestProto requestProto =
         ((StartContainerRequestPBImpl) request).getProto();
     try {
       return new StartContainerResponsePBImpl(proxy.startContainer(null,
         requestProto));
     } catch (ServiceException e) {
-      throw YarnRemoteExceptionPBImpl.unwrapAndThrowException(e);
+      throw RPCUtil.unwrapAndThrowException(e);
     }
   }
 
   @Override
   public StopContainerResponse stopContainer(StopContainerRequest request)
-      throws YarnRemoteException {
+      throws YarnRemoteException, IOException {
     StopContainerRequestProto requestProto =
         ((StopContainerRequestPBImpl) request).getProto();
     try {
       return new StopContainerResponsePBImpl(proxy.stopContainer(null,
         requestProto));
     } catch (ServiceException e) {
-      throw YarnRemoteExceptionPBImpl.unwrapAndThrowException(e);
+      throw RPCUtil.unwrapAndThrowException(e);
     }
   }
 }

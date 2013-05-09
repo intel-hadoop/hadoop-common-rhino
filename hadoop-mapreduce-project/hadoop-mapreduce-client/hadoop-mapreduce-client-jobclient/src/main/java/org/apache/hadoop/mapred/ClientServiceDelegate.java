@@ -137,7 +137,7 @@ public class ClientServiceDelegate {
     }
   }
 
-  private MRClientProtocol getProxy() throws YarnRemoteException {
+  private MRClientProtocol getProxy() throws YarnRemoteException, IOException {
     if (realProxy != null) {
       return realProxy;
     }
@@ -234,6 +234,8 @@ public class ClientServiceDelegate {
       throw RPCUtil.getRemoteException("User is not set in the application report");
     }
     if (application.getYarnApplicationState() == YarnApplicationState.NEW
+        || application.getYarnApplicationState() ==
+            YarnApplicationState.NEW_SAVING
         || application.getYarnApplicationState() == YarnApplicationState.SUBMITTED
         || application.getYarnApplicationState() == YarnApplicationState.ACCEPTED) {
       realProxy = null;
@@ -300,13 +302,13 @@ public class ClientServiceDelegate {
         return methodOb.invoke(getProxy(), args);
       } catch (YarnRemoteException yre) {
         LOG.warn("Exception thrown by remote end.", yre);
-        throw yre;
+        throw new IOException(yre);
       } catch (InvocationTargetException e) {
         if (e.getTargetException() instanceof YarnRemoteException) {
           LOG.warn("Error from remote end: " + e
               .getTargetException().getLocalizedMessage());
           LOG.debug("Tracing remote error ", e.getTargetException());
-          throw (YarnRemoteException) e.getTargetException();
+          throw new IOException(e.getTargetException());
         }
         LOG.debug("Failed to contact AM/History for job " + jobId + 
             " retrying..", e.getTargetException());

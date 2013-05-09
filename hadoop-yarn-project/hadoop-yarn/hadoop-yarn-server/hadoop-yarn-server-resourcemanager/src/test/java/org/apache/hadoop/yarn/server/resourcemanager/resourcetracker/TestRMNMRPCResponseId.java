@@ -28,6 +28,7 @@ import org.apache.hadoop.yarn.event.Dispatcher;
 import org.apache.hadoop.yarn.event.Event;
 import org.apache.hadoop.yarn.event.EventHandler;
 import org.apache.hadoop.yarn.event.InlineDispatcher;
+import org.apache.hadoop.yarn.exceptions.YarnRemoteException;
 import org.apache.hadoop.yarn.factories.RecordFactory;
 import org.apache.hadoop.yarn.factory.providers.RecordFactoryProvider;
 import org.apache.hadoop.yarn.server.api.protocolrecords.NodeHeartbeatRequest;
@@ -43,6 +44,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.ResourceTrackerService;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNodeEventType;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.event.SchedulerEventType;
 import org.apache.hadoop.yarn.server.resourcemanager.security.RMContainerTokenSecretManager;
+import org.apache.hadoop.yarn.util.BuilderUtils;
 import org.apache.hadoop.yarn.util.Records;
 import org.junit.After;
 import org.junit.Assert;
@@ -87,9 +89,9 @@ public class TestRMNMRPCResponseId {
   }
 
   @Test
-  public void testRPCResponseId() throws IOException {
+  public void testRPCResponseId() throws IOException, YarnRemoteException {
     String node = "localhost";
-    Resource capability = recordFactory.newRecordInstance(Resource.class);
+    Resource capability = BuilderUtils.newResource(1024, 1);
     RegisterNodeManagerRequest request = recordFactory.newRecordInstance(RegisterNodeManagerRequest.class);
     nodeId = Records.newRecord(NodeId.class);
     nodeId.setHost(node);
@@ -130,6 +132,6 @@ public class TestRMNMRPCResponseId {
 
     nodeStatus.setResponseId(0);
     response = resourceTrackerService.nodeHeartbeat(nodeHeartBeatRequest);
-    Assert.assertTrue(NodeAction.REBOOT.equals(response.getNodeAction()));
+    Assert.assertTrue(NodeAction.RESYNC.equals(response.getNodeAction()));
   }
 }

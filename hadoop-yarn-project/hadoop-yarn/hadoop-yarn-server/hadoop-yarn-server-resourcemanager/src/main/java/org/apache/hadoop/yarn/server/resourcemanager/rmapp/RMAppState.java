@@ -19,5 +19,13 @@
 package org.apache.hadoop.yarn.server.resourcemanager.rmapp;
 
 public enum RMAppState {
-  NEW, SUBMITTED, ACCEPTED, RUNNING, FINISHING, FINISHED, FAILED, KILLED
+  NEW,
+  NEW_SAVING,
+  SUBMITTED,
+  ACCEPTED,
+  RUNNING,
+  FINISHING,
+  FINISHED,
+  FAILED,
+  KILLED
 }

@@ -65,6 +65,7 @@ import org.apache.hadoop.io.retry.RetryPolicy.RetryAction;
 import org.apache.hadoop.ipc.protobuf.RpcHeaderProtos.RpcRequestHeaderProto;
 import org.apache.hadoop.ipc.protobuf.RpcHeaderProtos.RpcRequestHeaderProto.OperationProto;
 import org.apache.hadoop.ipc.protobuf.RpcHeaderProtos.RpcResponseHeaderProto;
+import org.apache.hadoop.ipc.protobuf.RpcHeaderProtos.RpcResponseHeaderProto.RpcErrorCodeProto;
 import org.apache.hadoop.ipc.protobuf.RpcHeaderProtos.RpcResponseHeaderProto.RpcStatusProto;
 import org.apache.hadoop.net.ConnectTimeoutException;
 import org.apache.hadoop.net.NetUtils;
@@ -706,12 +707,6 @@ public class Client {
       if (curRetries >= maxRetries) {
         throw ioe;
       }
-
-      // otherwise back off and retry
-      try {
-        Thread.sleep(1000);
-      } catch (InterruptedException ignored) {}
-      
       LOG.info("Retrying connect to server: " + server + ". Already tried "
           + curRetries + " time(s); maxRetries=" + maxRetries);
     }
@@ -993,8 +988,15 @@ public class Client {
                   "ServerDidNotSetExceptionClassName";
           final String errorMsg = header.hasErrorMsg() ? 
                 header.getErrorMsg() : "ServerDidNotSetErrorMsg" ;
+          final RpcErrorCodeProto erCode = 
+                    (header.hasErrorDetail() ? header.getErrorDetail() : null);
+          if (erCode == null) {
+             LOG.warn("Detailed error code not set by server on rpc error");
+          }
           RemoteException re = 
-              new RemoteException(exceptionClassName, errorMsg);
+              ( (erCode == null) ? 
+                  new RemoteException(exceptionClassName, errorMsg) :
+              new RemoteException(exceptionClassName, errorMsg, erCode));
           if (status == RpcStatusProto.ERROR) {
             call.setException(re);
             calls.remove(callId);

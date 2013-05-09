@@ -30,36 +30,8 @@ import org.apache.hadoop.util.Shell;
 public interface ApplicationConstants {
 
   // TODO: They say tokens via env isn't good.
-  public static final String APPLICATION_MASTER_TOKEN_ENV_NAME =
-    "AppMasterTokenEnv";
-
-  // TODO: They say tokens via env isn't good.
   public static final String APPLICATION_CLIENT_SECRET_ENV_NAME =
     "AppClientSecretEnv";
-  
-  /**
-   * The environment variable for CONTAINER_ID. Set in AppMaster environment
-   * only
-   */
-  public static final String AM_CONTAINER_ID_ENV = "AM_CONTAINER_ID";
-
-  /**
-   * The environment variable for the NM_HOST. Set in the AppMaster environment
-   * only
-   */
-  public static final String NM_HOST_ENV = "NM_HOST";
-  
-  /**
-   * The environment variable for the NM_PORT. Set in the AppMaster environment
-   * only
-   */
-  public static final String NM_PORT_ENV = "NM_PORT";
-  
-  /**
-   * The environment variable for the NM_HTTP_PORT. Set in the AppMaster environment
-   * only
-   */
-  public static final String NM_HTTP_PORT_ENV = "NM_HTTP_PORT";
   
   /**
    * The environment variable for APP_SUBMIT_TIME. Set in AppMaster environment
@@ -69,8 +41,6 @@ public interface ApplicationConstants {
 
   public static final String CONTAINER_TOKEN_FILE_ENV_NAME =
       UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION;
-
-  public static final String LOCAL_DIR_ENV = "YARN_LOCAL_DIRS";
 
   /**
    * The environmental variable for APPLICATION_WEB_PROXY_BASE. Set in 
@@ -177,7 +147,37 @@ public interface ApplicationConstants {
     /**
      * $HADOOP_YARN_HOME
      */
-    HADOOP_YARN_HOME("HADOOP_YARN_HOME");
+    HADOOP_YARN_HOME("HADOOP_YARN_HOME"),
+
+    /**
+     * $CONTAINER_ID
+     * Final, exported by NodeManager and non-modifiable by users.
+     */
+    CONTAINER_ID("CONTAINER_ID"),
+
+    /**
+     * $NM_HOST
+     * Final, exported by NodeManager and non-modifiable by users.
+     */
+    NM_HOST("NM_HOST"),
+
+    /**
+     * $NM_HTTP_PORT
+     * Final, exported by NodeManager and non-modifiable by users.
+     */
+    NM_HTTP_PORT("NM_HTTP_PORT"),
+
+    /**
+     * $NM_PORT
+     * Final, exported by NodeManager and non-modifiable by users.
+     */
+    NM_PORT("NM_PORT"),
+
+    /**
+     * $LOCAL_DIRS
+     * Final, exported by NodeManager and non-modifiable by users.
+     */
+    LOCAL_DIRS("LOCAL_DIRS");
 
     private final String variable;
     private Environment(String variable) {

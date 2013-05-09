@@ -422,6 +422,7 @@ public interface MRJobConfig {
   /** Enable job recovery.*/
   public static final String MR_AM_JOB_RECOVERY_ENABLE = 
     MR_AM_PREFIX + "job.recovery.enable";
+  public static final boolean MR_AM_JOB_RECOVERY_ENABLE_DEFAULT = true;
 
   /** 
    * Limit on the number of reducers that can be preempted to ensure that at
@@ -568,8 +569,6 @@ public interface MRJobConfig {
   public static final String STDOUT_LOGFILE_ENV = "STDOUT_LOGFILE_ENV";
   public static final String STDERR_LOGFILE_ENV = "STDERR_LOGFILE_ENV";
 
-  public static final String APPLICATION_ATTEMPT_ID_ENV = "APPLICATION_ATTEMPT_ID_ENV";
-
   // This should be the directory where splits file gets localized on the node
   // running ApplicationMaster.
   public static final String JOB_SUBMIT_DIR = "jobSubmitDir";
@@ -615,6 +614,9 @@ public interface MRJobConfig {
   public static final String MR_JOB_END_NOTIFICATION_PROXY =
     "mapreduce.job.end-notification.proxy";
 
+  public static final String MR_JOB_END_NOTIFICATION_TIMEOUT =
+      "mapreduce.job.end-notification.timeout";
+
   public static final String MR_JOB_END_RETRY_ATTEMPTS =
     "mapreduce.job.end-notification.retry.attempts";
 
@@ -626,6 +628,9 @@ public interface MRJobConfig {
 
   public static final String MR_JOB_END_NOTIFICATION_MAX_RETRY_INTERVAL =
     "mapreduce.job.end-notification.max.retry.interval";
+
+  public static final int DEFAULT_MR_JOB_END_NOTIFICATION_TIMEOUT =
+      5000;
 
   /*
    * MR AM Service Authorization
@@ -672,6 +677,6 @@ public interface MRJobConfig {
    */
   public static final String MR_AM_MAX_ATTEMPTS = "mapreduce.am.max-attempts";
 
-  public static final int DEFAULT_MR_AM_MAX_ATTEMPTS = 1;
+  public static final int DEFAULT_MR_AM_MAX_ATTEMPTS = 2;
   
 }

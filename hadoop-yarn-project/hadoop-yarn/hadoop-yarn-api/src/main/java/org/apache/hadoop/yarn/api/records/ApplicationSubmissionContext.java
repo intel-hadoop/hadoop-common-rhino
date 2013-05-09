@@ -58,12 +58,12 @@ public interface ApplicationSubmissionContext {
   
   /**
    * Set the <code>ApplicationId</code> of the submitted application.
-   * @param appplicationId <code>ApplicationId</code> of the submitted 
-   *                       application
+   * @param applicationId <code>ApplicationId</code> of the submitted
+   *                      application
    */
   @Public
   @Stable
-  public void setApplicationId(ApplicationId appplicationId);
+  public void setApplicationId(ApplicationId applicationId);
 
   /**
    * Get the application <em>name</em>.
@@ -112,22 +112,6 @@ public interface ApplicationSubmissionContext {
   @Public
   @Stable
   public void setPriority(Priority priority);
-  
-  /**
-   * Get the <em>user</em> submitting the application.
-   * @return <em>user</em> submitting the application
-   */
-  @Public
-  @Stable
-  public String getUser();
-  
-  /**
-   * Set the <em>user</em> submitting the application.
-   * @param user <em>user</em> submitting the application
-   */
-  @Public
-  @Stable
-  public void setUser(String user);
 
   /**
    * Get the <code>ContainerLaunchContext</code> to describe the 
@@ -207,4 +191,12 @@ public interface ApplicationSubmissionContext {
   @Public
   @Unstable
   public void setMaxAppAttempts(int maxAppAttempts);
+
+  @Public
+  @Stable
+  public Resource getResource();
+
+  @Public
+  @Stable
+  public void setResource(Resource resource);
 }

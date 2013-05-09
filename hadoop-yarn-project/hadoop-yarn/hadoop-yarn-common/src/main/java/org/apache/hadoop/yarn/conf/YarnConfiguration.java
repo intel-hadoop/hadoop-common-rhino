@@ -186,7 +186,7 @@ public class YarnConfiguration extends Configuration {
    */
   public static final String RM_AM_MAX_ATTEMPTS =
     RM_PREFIX + "am.max-attempts";
-  public static final int DEFAULT_RM_AM_MAX_ATTEMPTS = 1;
+  public static final int DEFAULT_RM_AM_MAX_ATTEMPTS = 2;
   
   /** The keytab for the resource manager.*/
   public static final String RM_KEYTAB = 
@@ -583,11 +583,6 @@ public class YarnConfiguration extends Configuration {
 
   public static final String DEFAULT_NM_USER_HOME_DIR= "/home/";
 
-
-  public static final int INVALID_CONTAINER_EXIT_STATUS = -1000;
-  public static final int ABORTED_CONTAINER_EXIT_STATUS = -100;
-  public static final int DISKS_FAILED = -101;
-
   ////////////////////////////////
   // Web Proxy Configs
   ////////////////////////////////
@@ -696,6 +691,19 @@ public class YarnConfiguration extends Configuration {
    * conflicts.
    */
   public static boolean DEFAULT_YARN_MINICLUSTER_FIXED_PORTS = false;
+
+  ////////////////////////////////
+  // Other Configs
+  ////////////////////////////////
+
+  /**
+   * The interval of the yarn client's querying application state after
+   * application submission. The unit is millisecond.
+   */
+  public static final String YARN_CLIENT_APP_SUBMISSION_POLL_INTERVAL_MS =
+      YARN_PREFIX + "client.app-submission.poll-interval";
+  public static final long DEFAULT_YARN_CLIENT_APP_SUBMISSION_POLL_INTERVAL_MS =
+      1000;
 
   public YarnConfiguration() {
     super();

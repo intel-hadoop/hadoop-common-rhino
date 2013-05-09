@@ -45,6 +45,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.net.NetUtils;
 import org.apache.hadoop.yarn.api.AMRMProtocol;
 import org.apache.hadoop.yarn.api.ApplicationConstants;
+import org.apache.hadoop.yarn.api.ApplicationConstants.Environment;
+import org.apache.hadoop.yarn.api.ContainerExitStatus;
 import org.apache.hadoop.yarn.api.ContainerManager;
 
 import org.apache.hadoop.yarn.api.protocolrecords.AllocateRequest;
@@ -319,7 +321,7 @@ public class ApplicationMaster {
 
     Map<String, String> envs = System.getenv();
 
-    if (!envs.containsKey(ApplicationConstants.AM_CONTAINER_ID_ENV)) {
+    if (!envs.containsKey(Environment.CONTAINER_ID.name())) {
       if (cliParser.hasOption("app_attempt_id")) {
         String appIdStr = cliParser.getOptionValue("app_attempt_id", "");
         appAttemptID = ConverterUtils.toApplicationAttemptId(appIdStr);
@@ -329,7 +331,7 @@ public class ApplicationMaster {
       }
     } else {
       ContainerId containerId = ConverterUtils.toContainerId(envs
-          .get(ApplicationConstants.AM_CONTAINER_ID_ENV));
+          .get(Environment.CONTAINER_ID.name()));
       appAttemptID = containerId.getApplicationAttemptId();
     }
 
@@ -337,16 +339,16 @@ public class ApplicationMaster {
       throw new RuntimeException(ApplicationConstants.APP_SUBMIT_TIME_ENV
           + " not set in the environment");
     }
-    if (!envs.containsKey(ApplicationConstants.NM_HOST_ENV)) {
-      throw new RuntimeException(ApplicationConstants.NM_HOST_ENV
+    if (!envs.containsKey(Environment.NM_HOST.name())) {
+      throw new RuntimeException(Environment.NM_HOST.name()
           + " not set in the environment");
     }
-    if (!envs.containsKey(ApplicationConstants.NM_HTTP_PORT_ENV)) {
-      throw new RuntimeException(ApplicationConstants.NM_HTTP_PORT_ENV
+    if (!envs.containsKey(Environment.NM_HTTP_PORT.name())) {
+      throw new RuntimeException(Environment.NM_HTTP_PORT
           + " not set in the environment");
     }
-    if (!envs.containsKey(ApplicationConstants.NM_PORT_ENV)) {
-      throw new RuntimeException(ApplicationConstants.NM_PORT_ENV
+    if (!envs.containsKey(Environment.NM_PORT.name())) {
+      throw new RuntimeException(Environment.NM_PORT.name()
           + " not set in the environment");
     }
 
@@ -431,8 +433,9 @@ public class ApplicationMaster {
    * Main run function for the application master
    *
    * @throws YarnRemoteException
+   * @throws IOException
    */
-  public boolean run() throws YarnRemoteException {
+  public boolean run() throws YarnRemoteException, IOException {
     LOG.info("Starting ApplicationMaster");
 
     AMRMClientAsync.CallbackHandler allocListener = new RMCallbackHandler();
@@ -531,6 +534,8 @@ public class ApplicationMaster {
       resourceManager.unregisterApplicationMaster(appStatus, appMessage, null);
     } catch (YarnRemoteException ex) {
       LOG.error("Failed to unregister application", ex);
+    } catch (IOException e) {
+      LOG.error("Failed to unregister application", e);
     }
     
     done = true;
@@ -556,7 +561,7 @@ public class ApplicationMaster {
         int exitStatus = containerStatus.getExitStatus();
         if (0 != exitStatus) {
           // container failed
-          if (YarnConfiguration.ABORTED_CONTAINER_EXIT_STATUS != exitStatus) {
+          if (ContainerExitStatus.ABORTED != exitStatus) {
             // shell script failed
             // counts as completed
             numCompletedContainers.incrementAndGet();
@@ -679,9 +684,6 @@ public class ApplicationMaster {
       ContainerLaunchContext ctx = Records
           .newRecord(ContainerLaunchContext.class);
 
-      ctx.setContainerId(container.getId());
-      ctx.setResource(container.getResource());
-
       String jobUserName = System.getenv(ApplicationConstants.Environment.USER
           .key());
       ctx.setUser(jobUserName);
@@ -752,6 +754,7 @@ public class ApplicationMaster {
       StartContainerRequest startReq = Records
           .newRecord(StartContainerRequest.class);
       startReq.setContainerLaunchContext(ctx);
+      startReq.setContainer(container);
       try {
         cm.startContainer(startReq);
       } catch (YarnRemoteException e) {
@@ -759,6 +762,10 @@ public class ApplicationMaster {
             + container.getId());
         e.printStackTrace();
         // TODO do we need to release this container?
+      } catch (IOException e) {
+        LOG.info("Start container failed for :" + ", containerId="
+            + container.getId());
+        e.printStackTrace();
       }
 
       // Get container status?

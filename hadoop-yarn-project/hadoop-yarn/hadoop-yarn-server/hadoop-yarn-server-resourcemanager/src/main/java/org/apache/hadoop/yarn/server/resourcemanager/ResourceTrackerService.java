@@ -73,13 +73,16 @@ public class ResourceTrackerService extends AbstractService implements
   private Server server;
   private InetSocketAddress resourceTrackerAddress;
 
-  private static final NodeHeartbeatResponse reboot = recordFactory
+  private static final NodeHeartbeatResponse resync = recordFactory
       .newRecordInstance(NodeHeartbeatResponse.class);
   private static final NodeHeartbeatResponse shutDown = recordFactory
   .newRecordInstance(NodeHeartbeatResponse.class);
   
+  private int minAllocMb;
+  private int minAllocVcores;
+
   static {
-    reboot.setNodeAction(NodeAction.REBOOT);
+    resync.setNodeAction(NodeAction.RESYNC);
 
     shutDown.setNodeAction(NodeAction.SHUTDOWN);
   }
@@ -111,6 +114,14 @@ public class ResourceTrackerService extends AbstractService implements
           + YarnConfiguration.RM_NM_HEARTBEAT_INTERVAL_MS
           + " should be larger than 0.");
     }
+
+    minAllocMb = conf.getInt(
+    	YarnConfiguration.RM_SCHEDULER_MINIMUM_ALLOCATION_MB,
+    	YarnConfiguration.DEFAULT_RM_SCHEDULER_MINIMUM_ALLOCATION_MB);
+    minAllocVcores = conf.getInt(
+    	YarnConfiguration.RM_SCHEDULER_MINIMUM_ALLOCATION_VCORES,
+    	YarnConfiguration.DEFAULT_RM_SCHEDULER_MINIMUM_ALLOCATION_VCORES);
+    
     super.init(conf);
   }
 
@@ -169,6 +180,16 @@ public class ResourceTrackerService extends AbstractService implements
       return response;
     }
 
+    // Check if this node has minimum allocations
+    if (capability.getMemory() < minAllocMb
+        || capability.getVirtualCores() < minAllocVcores) {
+      LOG.info("NodeManager from  " + host
+          + " doesn't satisfy minimum allocations, Sending SHUTDOWN"
+          + " signal to the NodeManager.");
+      response.setNodeAction(NodeAction.SHUTDOWN);
+      return response;
+    }
+
     if (isSecurityEnabled()) {
       MasterKey nextMasterKeyForNode =
           this.containerTokenSecretManager.getCurrentKey();
@@ -196,6 +217,7 @@ public class ResourceTrackerService extends AbstractService implements
         + capability + ", assigned nodeId " + nodeId);
 
     response.setNodeAction(NodeAction.NORMAL);
+    response.setRMIdentifier(ResourceManager.clusterTimeStamp);
     return response;
   }
 
@@ -220,7 +242,7 @@ public class ResourceTrackerService extends AbstractService implements
     if (rmNode == null) {
       /* node does not exist */
       LOG.info("Node not found rebooting " + remoteNodeStatus.getNodeId());
-      return reboot;
+      return resync;
     }
 
     // Send ping
@@ -250,7 +272,7 @@ public class ResourceTrackerService extends AbstractService implements
       // TODO: Just sending reboot is not enough. Think more.
       this.rmContext.getDispatcher().getEventHandler().handle(
           new RMNodeEvent(nodeId, RMNodeEventType.REBOOTING));
-      return reboot;
+      return resync;
     }
 
     // Heartbeat response

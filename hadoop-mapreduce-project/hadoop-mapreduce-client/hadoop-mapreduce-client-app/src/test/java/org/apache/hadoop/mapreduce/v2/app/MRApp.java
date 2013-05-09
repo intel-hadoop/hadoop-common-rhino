@@ -414,7 +414,8 @@ public class MRApp extends MRAppMaster {
     Job newJob = new TestJob(getJobId(), getAttemptID(), conf, 
     		getDispatcher().getEventHandler(),
             getTaskAttemptListener(), getContext().getClock(),
-            isNewApiCommitter(), currentUser.getUserName(), getContext(),
+            getCommitter(), isNewApiCommitter(),
+            currentUser.getUserName(), getContext(),
             forcedState, diagnostic);
     ((AppContext) getContext()).getAllJobs().put(newJob.getID(), newJob);
 
@@ -518,7 +519,7 @@ public class MRApp extends MRAppMaster {
         cId.setId(containerCount++);
         NodeId nodeId = BuilderUtils.newNodeId(NM_HOST, NM_PORT);
         Container container = BuilderUtils.newContainer(cId, nodeId,
-            NM_HOST + ":" + NM_HTTP_PORT, null, null, null);
+            NM_HOST + ":" + NM_HTTP_PORT, null, null, null, 0);
         JobID id = TypeConverter.fromYarn(applicationId);
         JobId jobId = TypeConverter.toYarn(id);
         getContext().getEventHandler().handle(new JobHistoryEvent(jobId, 
@@ -648,12 +649,13 @@ public class MRApp extends MRAppMaster {
     public TestJob(JobId jobId, ApplicationAttemptId applicationAttemptId,
         Configuration conf, EventHandler eventHandler,
         TaskAttemptListener taskAttemptListener, Clock clock,
-        boolean newApiCommitter, String user, AppContext appContext, 
+        OutputCommitter committer, boolean newApiCommitter,
+        String user, AppContext appContext,
         JobStateInternal forcedState, String diagnostic) {
       super(jobId, getApplicationAttemptId(applicationId, getStartCount()),
           conf, eventHandler, taskAttemptListener,
           new JobTokenSecretManager(), new Credentials(), clock,
-          getCompletedTaskFromPreviousRun(), metrics,
+          getCompletedTaskFromPreviousRun(), metrics, committer,
           newApiCommitter, user, System.currentTimeMillis(), getAllAMInfos(),
           appContext, forcedState, diagnostic);
 

@@ -128,7 +128,7 @@ public class TestContainerManagerSecurity {
 
   @Test
   public void testAuthenticatedUser() throws IOException,
-      InterruptedException {
+      InterruptedException, YarnRemoteException {
 
     LOG.info("Running test for authenticated user");
 
@@ -180,7 +180,8 @@ public class TestContainerManagerSecurity {
   }
 
   @Test
-  public void testMaliceUser() throws IOException, InterruptedException {
+  public void testMaliceUser() throws IOException, InterruptedException,
+      YarnRemoteException {
 
     LOG.info("Running test for malice user");
 
@@ -266,7 +267,8 @@ public class TestContainerManagerSecurity {
   }
 
   @Test
-  public void testUnauthorizedUser() throws IOException, InterruptedException {
+  public void testUnauthorizedUser() throws IOException, InterruptedException,
+      YarnRemoteException {
 
     LOG.info("\n\nRunning test for malice user");
 
@@ -357,8 +359,13 @@ public class TestContainerManagerSecurity {
 
         LOG.info("Going to contact NM with expired token");
         ContainerLaunchContext context = createContainerLaunchContextForTest(newTokenId);
+        Container container =
+            BuilderUtils.newContainer(newTokenId.getContainerID(), null, null,
+                BuilderUtils.newResource(newTokenId.getResource().getMemory(),
+                    newTokenId.getResource().getVirtualCores()), null, null, 0);
         StartContainerRequest request = Records.newRecord(StartContainerRequest.class);
         request.setContainerLaunchContext(context);
+        request.setContainer(container);
 
         //Calling startContainer with an expired token.
         try {
@@ -402,18 +409,19 @@ public class TestContainerManagerSecurity {
       Arrays.asList("ping", "-n", "100", "127.0.0.1", ">nul") :
       Arrays.asList("sleep", "100");
 
-    ContainerLaunchContext amContainer = BuilderUtils
-        .newContainerLaunchContext(null, "testUser", BuilderUtils
-            .newResource(1024, 1), Collections.<String, LocalResource>emptyMap(),
-            new HashMap<String, String>(), cmd,
-            new HashMap<String, ByteBuffer>(), null,
-            new HashMap<ApplicationAccessType, String>());
+    ContainerLaunchContext amContainer =
+        BuilderUtils.newContainerLaunchContext("testUser",
+                Collections.<String, LocalResource> emptyMap(),
+                new HashMap<String, String>(), cmd,
+                new HashMap<String, ByteBuffer>(), null,
+                new HashMap<ApplicationAccessType, String>());
 
     ApplicationSubmissionContext appSubmissionContext = recordFactory
         .newRecordInstance(ApplicationSubmissionContext.class);
     appSubmissionContext.setApplicationId(appID);
-    appSubmissionContext.setUser("testUser");
     appSubmissionContext.setAMContainerSpec(amContainer);
+    appSubmissionContext.getAMContainerSpec().setUser("testUser");
+    appSubmissionContext.setResource(BuilderUtils.newResource(1024, 1));
 
     SubmitApplicationRequest submitRequest = recordFactory
         .newRecordInstance(SubmitApplicationRequest.class);
@@ -477,7 +485,8 @@ public class TestContainerManagerSecurity {
   }
 
   private Container requestAndGetContainer(AMRMProtocol scheduler,
-      ApplicationId appID) throws YarnRemoteException, InterruptedException {
+      ApplicationId appID) throws YarnRemoteException, InterruptedException,
+      IOException {
 
     // Request a container allocation.
     List<ResourceRequest> ask = new ArrayList<ResourceRequest>();
@@ -491,7 +500,7 @@ public class TestContainerManagerSecurity {
         .getAllocatedContainers();
 
     // Modify ask to request no more.
-    allocateRequest.clearAsks();
+    allocateRequest.setAskList(new ArrayList<ResourceRequest>());
 
     int waitCounter = 0;
     while ((allocatedContainers == null || allocatedContainers.size() == 0)
@@ -529,6 +538,9 @@ public class TestContainerManagerSecurity {
           "Unauthorized request to start container. "
               + "\nExpected containerId: " + tokenId.getContainerID()
               + " Found: " + newContainerId.toString()));
+    } catch (IOException e) {
+      LOG.info("Got IOException: ",e);
+      fail("IOException is not expected.");
     }
   }
 
@@ -539,8 +551,11 @@ public class TestContainerManagerSecurity {
     // Authenticated but unauthorized, due to wrong resource
     ContainerLaunchContext context =
         createContainerLaunchContextForTest(tokenId);
-    context.getResource().setMemory(2048); // Set a different resource size.
+    Container container =
+        BuilderUtils.newContainer(tokenId.getContainerID(), null, null,
+            BuilderUtils.newResource(2048, 1), null, null, 0);
     request.setContainerLaunchContext(context);
+    request.setContainer(container);
     try {
       client.startContainer(request);
       fail("Connection initiation with unauthorized "
@@ -551,7 +566,10 @@ public class TestContainerManagerSecurity {
           "Unauthorized request to start container. "));
       Assert.assertTrue(e.getMessage().contains(
           "\nExpected resource " + tokenId.getResource().toString()
-              + " but found " + context.getResource().toString()));
+              + " but found " + container.getResource().toString()));
+    } catch (IOException e) {
+      LOG.info("Got IOException: ",e);
+      fail("IOException is not expected.");
     }
   }
 
@@ -563,7 +581,12 @@ public class TestContainerManagerSecurity {
     ContainerLaunchContext context =
         createContainerLaunchContextForTest(tokenId);
     context.setUser("Saruman"); // Set a different user-name.
+    Container container =
+        BuilderUtils.newContainer(tokenId.getContainerID(), null, null,
+            BuilderUtils.newResource(tokenId.getResource().getMemory(), tokenId
+                .getResource().getVirtualCores()), null, null, 0);
     request.setContainerLaunchContext(context);
+    request.setContainer(container);
     try {
       client.startContainer(request);
       fail("Connection initiation with unauthorized "
@@ -575,18 +598,17 @@ public class TestContainerManagerSecurity {
       Assert.assertTrue(e.getMessage().contains(
         "Expected user-name " + tokenId.getApplicationSubmitter()
             + " but found " + context.getUser()));
+    } catch (IOException e) {
+      LOG.info("Got IOException: ",e);
+      fail("IOException is not expected.");
     }
   }
 
   private ContainerLaunchContext createContainerLaunchContextForTest(
       ContainerTokenIdentifier tokenId) {
     ContainerLaunchContext context =
-        BuilderUtils.newContainerLaunchContext(tokenId.getContainerID(),
-            "testUser",
-            BuilderUtils.newResource(
-                tokenId.getResource().getMemory(), 
-                tokenId.getResource().getVirtualCores()),
-            new HashMap<String, LocalResource>(),
+        BuilderUtils.newContainerLaunchContext(
+            "testUser", new HashMap<String, LocalResource>(),
             new HashMap<String, String>(), new ArrayList<String>(),
             new HashMap<String, ByteBuffer>(), null,
             new HashMap<ApplicationAccessType, String>());

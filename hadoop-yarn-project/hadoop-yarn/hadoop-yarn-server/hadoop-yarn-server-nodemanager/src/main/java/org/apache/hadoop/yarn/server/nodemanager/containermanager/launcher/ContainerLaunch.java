@@ -28,6 +28,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -47,6 +48,7 @@ import org.apache.hadoop.util.Shell;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.yarn.api.ApplicationConstants;
 import org.apache.hadoop.yarn.api.ApplicationConstants.Environment;
+import org.apache.hadoop.yarn.api.ContainerExitStatus;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.conf.YarnConfiguration;
@@ -71,8 +73,8 @@ public class ContainerLaunch implements Callable<Integer> {
 
   private static final Log LOG = LogFactory.getLog(ContainerLaunch.class);
 
-  public static final String CONTAINER_SCRIPT = Shell.WINDOWS ?
-    "launch_container.cmd" : "launch_container.sh";
+  public static final String CONTAINER_SCRIPT =
+    Shell.appendScriptExtension("launch_container");
   public static final String FINAL_CONTAINER_TOKENS_FILE = "container_tokens";
 
   private static final String PID_FILE_NAME_FMT = "%s.pid";
@@ -116,7 +118,7 @@ public class ContainerLaunch implements Callable<Integer> {
     final ContainerLaunchContext launchContext = container.getLaunchContext();
     final Map<Path,List<String>> localResources =
         container.getLocalizedResources();
-    ContainerId containerID = container.getContainerID();
+    ContainerId containerID = container.getContainer().getId();
     String containerIdStr = ConverterUtils.toString(containerID);
     final String user = launchContext.getUser();
     final List<String> command = launchContext.getCommands();
@@ -185,7 +187,7 @@ public class ContainerLaunch implements Callable<Integer> {
       List<String> logDirs = dirsHandler.getLogDirs();
 
       if (!dirsHandler.areDisksHealthy()) {
-        ret = YarnConfiguration.DISKS_FAILED;
+        ret = ContainerExitStatus.DISKS_FAILED;
         throw new IOException("Most of the disks failed. "
             + dirsHandler.getDisksHealthReport());
       }
@@ -210,7 +212,7 @@ public class ContainerLaunch implements Callable<Integer> {
                 FINAL_CONTAINER_TOKENS_FILE).toUri().getPath());
 
         // Sanitize the container's environment
-        sanitizeEnv(environment, containerWorkDir, appDirs);
+        sanitizeEnv(environment, containerWorkDir, appDirs, localResources);
         
         // Write out the environment
         writeLaunchEnv(containerScriptOutStream, environment, localResources,
@@ -249,9 +251,8 @@ public class ContainerLaunch implements Callable<Integer> {
     } catch (Throwable e) {
       LOG.warn("Failed to launch container.", e);
       dispatcher.getEventHandler().handle(new ContainerExitEvent(
-            launchContext.getContainerId(),
-            ContainerEventType.CONTAINER_EXITED_WITH_FAILURE, ret,
-            e.getMessage()));
+          containerID, ContainerEventType.CONTAINER_EXITED_WITH_FAILURE, ret,
+          e.getMessage()));
       return ret;
     } finally {
       completed.set(true);
@@ -267,7 +268,7 @@ public class ContainerLaunch implements Callable<Integer> {
       // If the process was killed, Send container_cleanedup_after_kill and
       // just break out of this method.
       dispatcher.getEventHandler().handle(
-            new ContainerExitEvent(launchContext.getContainerId(),
+            new ContainerExitEvent(containerID,
                 ContainerEventType.CONTAINER_KILLED_ON_REQUEST, ret,
                 "Container exited with a non-zero exit code " + ret));
       return ret;
@@ -276,15 +277,15 @@ public class ContainerLaunch implements Callable<Integer> {
     if (ret != 0) {
       LOG.warn("Container exited with a non-zero exit code " + ret);
       this.dispatcher.getEventHandler().handle(new ContainerExitEvent(
-              launchContext.getContainerId(),
-              ContainerEventType.CONTAINER_EXITED_WITH_FAILURE, ret,
-              "Container exited with a non-zero exit code " + ret));
+          containerID,
+          ContainerEventType.CONTAINER_EXITED_WITH_FAILURE, ret,
+          "Container exited with a non-zero exit code " + ret));
       return ret;
     }
 
     LOG.info("Container " + containerIdStr + " succeeded ");
     dispatcher.getEventHandler().handle(
-        new ContainerEvent(launchContext.getContainerId(),
+        new ContainerEvent(containerID,
             ContainerEventType.CONTAINER_EXITED_WITH_SUCCESS));
     return 0;
   }
@@ -298,7 +299,7 @@ public class ContainerLaunch implements Callable<Integer> {
    * @throws IOException
    */
   public void cleanupContainer() throws IOException {
-    ContainerId containerId = container.getContainerID();
+    ContainerId containerId = container.getContainer().getId();
     String containerIdStr = ConverterUtils.toString(containerId);
     LOG.info("Cleaning up container " + containerIdStr);
 
@@ -369,7 +370,7 @@ public class ContainerLaunch implements Callable<Integer> {
    */
   private String getContainerPid(Path pidFilePath) throws Exception {
     String containerIdStr = 
-        ConverterUtils.toString(container.getContainerID());
+        ConverterUtils.toString(container.getContainer().getId());
     String processId = null;
     LOG.debug("Accessing pid for container " + containerIdStr
         + " from pid file " + pidFilePath);
@@ -506,9 +507,17 @@ public class ContainerLaunch implements Callable<Integer> {
 
     @Override
     protected void link(Path src, Path dst) throws IOException {
-      line(String.format("@%s symlink \"%s\" \"%s\"", Shell.WINUTILS,
-        new File(dst.toString()).getPath(),
-        new File(src.toUri().getPath()).getPath()));
+      File srcFile = new File(src.toUri().getPath());
+      String srcFileStr = srcFile.getPath();
+      String dstFileStr = new File(dst.toString()).getPath();
+      // If not on Java7+ on Windows, then copy file instead of symlinking.
+      // See also FileUtil#symLink for full explanation.
+      if (!Shell.isJava7OrAbove() && srcFile.isFile()) {
+        line(String.format("@copy \"%s\" \"%s\"", srcFileStr, dstFileStr));
+      } else {
+        line(String.format("@%s symlink \"%s\" \"%s\"", Shell.WINUTILS,
+          dstFileStr, srcFileStr));
+      }
     }
 
     @Override
@@ -532,10 +541,26 @@ public class ContainerLaunch implements Callable<Integer> {
   }
   
   public void sanitizeEnv(Map<String, String> environment, 
-      Path pwd, List<Path> appDirs) throws IOException {
+      Path pwd, List<Path> appDirs, Map<Path, List<String>> resources)
+      throws IOException {
     /**
      * Non-modifiable environment variables
      */
+
+    environment.put(Environment.CONTAINER_ID.name(), container
+        .getContainer().getId().toString());
+
+    environment.put(Environment.NM_PORT.name(),
+        String.valueOf(container.getContainer().getNodeId().getPort()));
+
+    environment.put(Environment.NM_HOST.name(), container.getContainer()
+        .getNodeId().getHost());
+
+    environment.put(Environment.NM_HTTP_PORT.name(), container.getContainer()
+        .getNodeHttpAddress().split(":")[1]);
+
+    environment.put(Environment.LOCAL_DIRS.name(),
+        StringUtils.join(",", appDirs));
 
     putEnvIfNotNull(environment, Environment.USER.name(), container.getUser());
     
@@ -556,24 +581,9 @@ public class ContainerLaunch implements Callable<Integer> {
         Environment.HADOOP_CONF_DIR.name(), 
         System.getenv(Environment.HADOOP_CONF_DIR.name())
         );
-    
-    putEnvIfNotNull(environment, 
-        ApplicationConstants.LOCAL_DIR_ENV, 
-        StringUtils.join(",", appDirs)
-        );
 
     if (!Shell.WINDOWS) {
       environment.put("JVM_PID", "$$");
-    }
-
-    // TODO: Remove Windows check and use this approach on all platforms after
-    // additional testing.  See YARN-358.
-    if (Shell.WINDOWS) {
-      String inputClassPath = environment.get(Environment.CLASSPATH.name());
-      if (inputClassPath != null && !inputClassPath.isEmpty()) {
-        environment.put(Environment.CLASSPATH.name(),
-            FileUtil.createJarWithClassPath(inputClassPath, pwd));
-      }
     }
 
     /**
@@ -594,6 +604,57 @@ public class ContainerLaunch implements Callable<Integer> {
         YarnConfiguration.NM_ADMIN_USER_ENV,
         YarnConfiguration.DEFAULT_NM_ADMIN_USER_ENV)
     );
+
+    // TODO: Remove Windows check and use this approach on all platforms after
+    // additional testing.  See YARN-358.
+    if (Shell.WINDOWS) {
+      String inputClassPath = environment.get(Environment.CLASSPATH.name());
+      if (inputClassPath != null && !inputClassPath.isEmpty()) {
+        StringBuilder newClassPath = new StringBuilder(inputClassPath);
+
+        // Localized resources do not exist at the desired paths yet, because the
+        // container launch script has not run to create symlinks yet.  This
+        // means that FileUtil.createJarWithClassPath can't automatically expand
+        // wildcards to separate classpath entries for each file in the manifest.
+        // To resolve this, append classpath entries explicitly for each
+        // resource.
+        for (Map.Entry<Path,List<String>> entry : resources.entrySet()) {
+          boolean targetIsDirectory = new File(entry.getKey().toUri().getPath())
+            .isDirectory();
+
+          for (String linkName : entry.getValue()) {
+            // Append resource.
+            newClassPath.append(File.pathSeparator).append(pwd.toString())
+              .append(Path.SEPARATOR).append(linkName);
+
+            // FileUtil.createJarWithClassPath must use File.toURI to convert
+            // each file to a URI to write into the manifest's classpath.  For
+            // directories, the classpath must have a trailing '/', but
+            // File.toURI only appends the trailing '/' if it is a directory that
+            // already exists.  To resolve this, add the classpath entries with
+            // explicit trailing '/' here for any localized resource that targets
+            // a directory.  Then, FileUtil.createJarWithClassPath will guarantee
+            // that the resulting entry in the manifest's classpath will have a
+            // trailing '/', and thus refer to a directory instead of a file.
+            if (targetIsDirectory) {
+              newClassPath.append(Path.SEPARATOR);
+            }
+          }
+        }
+
+        // When the container launches, it takes the parent process's environment
+        // and then adds/overwrites with the entries from the container launch
+        // context.  Do the same thing here for correct substitution of
+        // environment variables in the classpath jar manifest.
+        Map<String, String> mergedEnv = new HashMap<String, String>(
+          System.getenv());
+        mergedEnv.putAll(environment);
+
+        String classPathJar = FileUtil.createJarWithClassPath(
+          newClassPath.toString(), pwd, mergedEnv);
+        environment.put(Environment.CLASSPATH.name(), classPathJar);
+      }
+    }
   }
     
   static void writeLaunchEnv(OutputStream out,

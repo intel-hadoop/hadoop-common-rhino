@@ -44,7 +44,6 @@ import org.apache.hadoop.io.nativeio.NativeIO;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.util.Shell;
 import org.apache.hadoop.util.Shell.ShellCommandExecutor;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
@@ -148,9 +147,9 @@ public class FileUtil {
    * Pure-Java implementation of "chmod +rwx f".
    */
   private static void grantPermissions(final File f) {
-      f.setExecutable(true);
-      f.setReadable(true);
-      f.setWritable(true);
+      FileUtil.setExecutable(f, true);
+      FileUtil.setReadable(f, true);
+      FileUtil.setWritable(f, true);
   }
 
   private static boolean deleteImpl(final File f, final boolean doLog) {
@@ -284,7 +283,7 @@ public class FileUtil {
     // Check if dest is directory
     if (!dstFS.exists(dst)) {
       throw new IOException("`" + dst +"': specified destination directory " +
-                            "doest not exist");
+                            "does not exist");
     } else {
       FileStatus sdst = dstFS.getFileStatus(dst);
       if (!sdst.isDirectory()) 
@@ -852,6 +851,129 @@ public class FileUtil {
   }
 
   /**
+   * Platform independent implementation for {@link File#setReadable(boolean)}
+   * File#setReadable does not work as expected on Windows.
+   * @param f input file
+   * @param readable
+   * @return true on success, false otherwise
+   */
+  public static boolean setReadable(File f, boolean readable) {
+    if (Shell.WINDOWS) {
+      try {
+        String permission = readable ? "u+r" : "u-r";
+        FileUtil.chmod(f.getCanonicalPath(), permission, false);
+        return true;
+      } catch (IOException ex) {
+        return false;
+      }
+    } else {
+      return f.setReadable(readable);
+    }
+  }
+
+  /**
+   * Platform independent implementation for {@link File#setWritable(boolean)}
+   * File#setWritable does not work as expected on Windows.
+   * @param f input file
+   * @param writable
+   * @return true on success, false otherwise
+   */
+  public static boolean setWritable(File f, boolean writable) {
+    if (Shell.WINDOWS) {
+      try {
+        String permission = writable ? "u+w" : "u-w";
+        FileUtil.chmod(f.getCanonicalPath(), permission, false);
+        return true;
+      } catch (IOException ex) {
+        return false;
+      }
+    } else {
+      return f.setWritable(writable);
+    }
+  }
+
+  /**
+   * Platform independent implementation for {@link File#setExecutable(boolean)}
+   * File#setExecutable does not work as expected on Windows.
+   * Note: revoking execute permission on folders does not have the same
+   * behavior on Windows as on Unix platforms. Creating, deleting or renaming
+   * a file within that folder will still succeed on Windows.
+   * @param f input file
+   * @param executable
+   * @return true on success, false otherwise
+   */
+  public static boolean setExecutable(File f, boolean executable) {
+    if (Shell.WINDOWS) {
+      try {
+        String permission = executable ? "u+x" : "u-x";
+        FileUtil.chmod(f.getCanonicalPath(), permission, false);
+        return true;
+      } catch (IOException ex) {
+        return false;
+      }
+    } else {
+      return f.setExecutable(executable);
+    }
+  }
+
+  /**
+   * Platform independent implementation for {@link File#canRead()}
+   * @param f input file
+   * @return On Unix, same as {@link File#canRead()}
+   *         On Windows, true if process has read access on the path
+   */
+  public static boolean canRead(File f) {
+    if (Shell.WINDOWS) {
+      try {
+        return NativeIO.Windows.access(f.getCanonicalPath(),
+            NativeIO.Windows.AccessRight.ACCESS_READ);
+      } catch (IOException e) {
+        return false;
+      }
+    } else {
+      return f.canRead();
+    }
+  }
+
+  /**
+   * Platform independent implementation for {@link File#canWrite()}
+   * @param f input file
+   * @return On Unix, same as {@link File#canWrite()}
+   *         On Windows, true if process has write access on the path
+   */
+  public static boolean canWrite(File f) {
+    if (Shell.WINDOWS) {
+      try {
+        return NativeIO.Windows.access(f.getCanonicalPath(),
+            NativeIO.Windows.AccessRight.ACCESS_WRITE);
+      } catch (IOException e) {
+        return false;
+      }
+    } else {
+      return f.canWrite();
+    }
+  }
+
+  /**
+   * Platform independent implementation for {@link File#canExecute()}
+   * @param f input file
+   * @return On Unix, same as {@link File#canExecute()}
+   *         On Windows, true if process has execute access on the path
+   */
+  public static boolean canExecute(File f) {
+    if (Shell.WINDOWS) {
+      try {
+        return NativeIO.Windows.access(f.getCanonicalPath(),
+            NativeIO.Windows.AccessRight.ACCESS_EXECUTE);
+      } catch (IOException e) {
+        return false;
+      }
+    } else {
+      return f.canExecute();
+    }
+  }
+
+  /**
    * Set permissions to the required value. Uses the java primitives instead
    * of forking if group == other.
    * @param f the file to change
@@ -1039,15 +1161,17 @@ public class FileUtil {
    * 
    * @param inputClassPath String input classpath to bundle into the jar manifest
    * @param pwd Path to working directory to save jar
+   * @param callerEnv Map<String, String> caller's environment variables to use
+   *   for expansion
    * @return String absolute path to new jar
    * @throws IOException if there is an I/O error while writing the jar file
    */
-  public static String createJarWithClassPath(String inputClassPath, Path pwd)
-      throws IOException {
+  public static String createJarWithClassPath(String inputClassPath, Path pwd,
+      Map<String, String> callerEnv) throws IOException {
     // Replace environment variables, case-insensitive on Windows
     @SuppressWarnings("unchecked")
-    Map<String, String> env = Shell.WINDOWS ?
-      new CaseInsensitiveMap(System.getenv()) : System.getenv();
+    Map<String, String> env = Shell.WINDOWS ? new CaseInsensitiveMap(callerEnv) :
+      callerEnv;
     String[] classPathEntries = inputClassPath.split(File.pathSeparator);
     for (int i = 0; i < classPathEntries.length; ++i) {
       classPathEntries[i] = StringUtils.replaceTokens(classPathEntries[i],
@@ -1078,9 +1202,22 @@ public class FileUtil {
           }
         }
       } else {
-        // Append just this jar
-        classPathEntryList.add(new File(classPathEntry).toURI().toURL()
-          .toExternalForm());
+        // Append just this entry
+        String classPathEntryUrl = new File(classPathEntry).toURI().toURL()
+          .toExternalForm();
+
+        // File.toURI only appends trailing '/' if it can determine that it is a
+        // directory that already exists.  (See JavaDocs.)  If this entry had a
+        // trailing '/' specified by the caller, then guarantee that the
+        // classpath entry in the manifest has a trailing '/', and thus refers to
+        // a directory instead of a file.  This can happen if the caller is
+        // creating a classpath jar referencing a directory that hasn't been
+        // created yet, but will definitely be created before running.
+        if (classPathEntry.endsWith(Path.SEPARATOR) &&
+            !classPathEntryUrl.endsWith(Path.SEPARATOR)) {
+          classPathEntryUrl = classPathEntryUrl + Path.SEPARATOR;
+        }
+        classPathEntryList.add(classPathEntryUrl);
       }
     }
     String jarClassPath = StringUtils.join(" ", classPathEntryList);
